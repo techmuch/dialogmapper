@@ -31,7 +31,16 @@ type Server struct {
 	// for. See WatchExternalChanges for why it is tracked rather than a
 	// simple "did we just write?" flag.
 	knownVersion atomic.Int64
+
+	// pollInterval is how often external writes are checked for. Tests turn
+	// it down so they assert on behaviour rather than on the clock.
+	pollInterval time.Duration
 }
+
+// defaultPollInterval balances responsiveness against waking the disk. Changes
+// made in this process are broadcast immediately regardless; this only governs
+// how fast an edit from another process shows up.
+const defaultPollInterval = 750 * time.Millisecond
 
 // New builds a server bound to a store.
 func New(st *store.Store) (*Server, error) {
@@ -39,7 +48,10 @@ func New(st *store.Store) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{st: st, hub: newHub(), ui: ui, mux: http.NewServeMux()}
+	s := &Server{
+		st: st, hub: newHub(), ui: ui, mux: http.NewServeMux(),
+		pollInterval: defaultPollInterval,
+	}
 	s.routes()
 	go s.hub.run()
 	return s, nil
@@ -180,7 +192,11 @@ func (s *Server) WatchExternalChanges(ctx context.Context) {
 	}
 	s.knownVersion.Store(v)
 
-	tick := time.NewTicker(750 * time.Millisecond)
+	interval := s.pollInterval
+	if interval <= 0 {
+		interval = defaultPollInterval
+	}
+	tick := time.NewTicker(interval)
 	defer tick.Stop()
 
 	for {

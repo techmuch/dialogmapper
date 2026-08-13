@@ -140,5 +140,36 @@ make build    # frontend + embedded single binary
 make release  # cross-compiled binaries in dist/
 ```
 
+### Tests
+
+Nothing is mocked. Store tests run against real SQLite in a temp directory,
+server tests run a real `httptest` server and speak real HTTP and WebSocket,
+and CLI tests execute the actual cobra commands.
+
+| Package | Covers |
+|---------|--------|
+| `internal/ibis` | The grammar: which edges are legal, which are refused, and that every refusal names an alternative |
+| `internal/store` | Transactions, cycle rejection, transclusion identity, per-map layout, exporters, id monotonicity |
+| `internal/server` | SPA fallback, mobile redirect, origin policy, upload round-trip and path safety, WebSocket fan-out |
+| `internal/cli` | Seed parsing, and init → seed → export round trips |
+
+Two tests exist because the bug they describe actually happened:
+
+- `TestExternalWriteIsDetectedAfterOwnWrites` — the watcher used to count its
+  own writes and skip a poll per write, silently swallowing an edit from a
+  separate process that landed in the same window.
+- `TestBulletsBecomeIdeasAndArguments` — a bare `!` line was not matched, so
+  the objection became a Note titled `!` with its text stranded in the body.
+
+`TestEverySeededEdgeIsLegal` is the one worth keeping honest: whatever the seed
+parser produces must form a valid IBIS graph, since anything illegal is
+rejected at write time and skipped.
+
+Run `go test -race ./...` before touching the hub — the broadcast path is
+concurrent and the race detector is the only thing that will tell you.
+
+Not covered: the React layer has no unit tests. `npm run typecheck` is the only
+guard, and the capture-loop keyboard logic is the part most worth testing next.
+
 `internal/web/dist` is committed on purpose: `go install` should work for
 someone who has never installed Node.
