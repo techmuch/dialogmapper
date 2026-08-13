@@ -1,0 +1,16 @@
+# Build output
+/dialogmapper
+/dist/
+web/node_modules/
+
+# Local project data created by `dialogmapper init` during development
+maps.db
+maps.db-wal
+maps.db-shm
+
+# internal/web/dist is intentionally NOT ignored: it is committed so that
+# `go build` and `go install` work without a Node toolchain.
+
+.DS_Store
+*.log
+*.timestamp-*.mjs
