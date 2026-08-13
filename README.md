@@ -153,7 +153,12 @@ and CLI tests execute the actual cobra commands.
 | `internal/server` | SPA fallback, mobile redirect, origin policy, upload round-trip and path safety, WebSocket fan-out |
 | `internal/cli` | Seed parsing, and init → seed → export round trips |
 
-Two tests exist because the bug they describe actually happened:
+Three tests exist because the bug they describe actually happened:
+
+- `TestIndexReferencesAreActuallyServable` — user media was mounted at
+  `/assets/`, the same prefix Vite emits the bundle into, so the app's own
+  JavaScript 404'd and the page rendered black with no console error to chase.
+  Fetching `/` was never enough; the test now fetches what `/` points at.
 
 - `TestExternalWriteIsDetectedAfterOwnWrites` — the watcher used to count its
   own writes and skip a poll per write, silently swallowing an edit from a

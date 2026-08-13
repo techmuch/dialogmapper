@@ -145,6 +145,89 @@ func TestServesEmbeddedSPA(t *testing.T) {
 	}
 }
 
+// TestIndexReferencesAreActuallyServable is the test whose absence let a blank
+// page ship. Fetching "/" only proves the HTML exists; the app is dead unless
+// the script and stylesheet that HTML points at also load. They did not: user
+// media was mounted at /assets/, the same prefix Vite emits the bundle into,
+// so every request for the app's own JS was answered by the media file server
+// and 404'd. Nothing rendered, and there was no JavaScript error to find.
+func TestIndexReferencesAreActuallyServable(t *testing.T) {
+	h := newHarness(t)
+
+	res := h.do(http.MethodGet, "/", nil, nil)
+	body, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	refs := indexAssetRefs(string(body))
+	if len(refs) == 0 {
+		t.Fatal("index.html references no scripts or stylesheets; is the frontend built?")
+	}
+
+	for _, ref := range refs {
+		res := h.do(http.MethodGet, ref, nil, nil)
+		ct := res.Header.Get("Content-Type")
+		n, _ := io.Copy(io.Discard, res.Body)
+		res.Body.Close()
+
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("index.html references %s but it returns %d", ref, res.StatusCode)
+			continue
+		}
+		if n == 0 {
+			t.Errorf("%s served an empty body", ref)
+		}
+		// A browser refuses a stylesheet or module served as text/plain, so a
+		// 200 alone is not enough to prove the page will work.
+		switch {
+		case strings.HasSuffix(ref, ".js"):
+			if !strings.Contains(ct, "javascript") {
+				t.Errorf("%s content-type = %q, want a javascript type", ref, ct)
+			}
+		case strings.HasSuffix(ref, ".css"):
+			if !strings.Contains(ct, "text/css") {
+				t.Errorf("%s content-type = %q, want text/css", ref, ct)
+			}
+		}
+	}
+}
+
+// indexAssetRefs pulls same-origin src= and href= paths out of the built HTML.
+func indexAssetRefs(html string) []string {
+	var out []string
+	for _, attr := range []string{`src="`, `href="`} {
+		rest := html
+		for {
+			i := strings.Index(rest, attr)
+			if i < 0 {
+				break
+			}
+			rest = rest[i+len(attr):]
+			j := strings.Index(rest, `"`)
+			if j < 0 {
+				break
+			}
+			ref := rest[:j]
+			rest = rest[j:]
+			if strings.HasPrefix(ref, "/") {
+				out = append(out, ref)
+			}
+		}
+	}
+	return out
+}
+
+// TestMediaDoesNotShadowTheFrontend pins the invariant directly, so that
+// moving either mount point fails loudly rather than blanking the page.
+func TestMediaDoesNotShadowTheFrontend(t *testing.T) {
+	if strings.HasPrefix("/assets/", MediaURLPrefix) || strings.HasPrefix(MediaURLPrefix, "/assets/") {
+		t.Fatalf("media prefix %q collides with the frontend's /assets/ directory",
+			MediaURLPrefix)
+	}
+}
+
 func TestClientSideRouteFallsBackToIndex(t *testing.T) {
 	h := newHarness(t)
 	res := h.do(http.MethodGet, "/some/deep/client/route", nil, nil)
@@ -450,6 +533,11 @@ func TestAssetUploadRoundTrip(t *testing.T) {
 	// resolvable on another machine.
 	if !strings.HasPrefix(storage, store.AssetsDirName+"/") {
 		t.Errorf("storagePath = %q, want a path under %s/", storage, store.AssetsDirName)
+	}
+	// The URL the browser is handed must not sit under the frontend's own
+	// asset prefix, or it would be shadowed by the embedded bundle.
+	if !strings.HasPrefix(path, MediaURLPrefix) {
+		t.Errorf("asset URL = %q, want it under %s", path, MediaURLPrefix)
 	}
 	if _, err := os.Stat(filepath.Join(h.dir, storage)); err != nil {
 		t.Errorf("file not written to disk: %v", err)

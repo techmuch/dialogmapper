@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   Controls,
@@ -55,29 +56,48 @@ function CanvasInner() {
 
   const visible = useVisibleSet();
 
-  /** Store nodes → React Flow nodes. Group boxes are laid in behind. */
-  const rfNodes = useMemo<RFNode[]>(() => {
-    const boxes: RFNode[] = Object.values(groups).map((g) => ({
-      id: g.id,
-      type: "groupBox",
-      position: { x: g.x, y: g.y },
-      data: { group: g },
-      draggable: true,
-      selectable: false,
-      zIndex: -1,
-      style: { width: g.w, height: g.h },
-    }));
+  /**
+   * React Flow nodes, derived from the store but held in local state.
+   *
+   * The local copy exists so that onNodesChange can apply React Flow's own
+   * updates — in particular the "dimensions" change it emits after measuring
+   * each card. Those measurements are what the minimap and fitView read; an
+   * earlier version discarded every change and re-derived purely from the
+   * store, so nothing was ever measured and the minimap rendered empty.
+   *
+   * Re-deriving preserves `measured`, otherwise every store update would
+   * throw the measurements away again.
+   */
+  const [rfNodes, setRfNodes] = useState<RFNode[]>([]);
 
-    const cards: RFNode[] = Object.values(nodes).map((n) => ({
-      id: n.id,
-      type: "ibis",
-      position: { x: n.placement?.x ?? 0, y: n.placement?.y ?? 0 },
-      selected: n.id === selectedId,
-      data: { node: n, dimmed: !visible.has(n.id) } satisfies NodeCardData,
-      zIndex: 1,
-    }));
+  useEffect(() => {
+    setRfNodes((prev) => {
+      const measured = new Map(prev.map((n) => [n.id, n.measured]));
 
-    return [...boxes, ...cards];
+      const boxes: RFNode[] = Object.values(groups).map((g) => ({
+        id: g.id,
+        type: "groupBox",
+        position: { x: g.x, y: g.y },
+        data: { group: g },
+        draggable: true,
+        selectable: false,
+        zIndex: -1,
+        style: { width: g.w, height: g.h },
+        measured: measured.get(g.id),
+      }));
+
+      const cards: RFNode[] = Object.values(nodes).map((n) => ({
+        id: n.id,
+        type: "ibis",
+        position: { x: n.placement?.x ?? 0, y: n.placement?.y ?? 0 },
+        selected: n.id === selectedId,
+        data: { node: n, dimmed: !visible.has(n.id) } satisfies NodeCardData,
+        zIndex: 1,
+        measured: measured.get(n.id),
+      }));
+
+      return [...boxes, ...cards];
+    });
   }, [nodes, groups, selectedId, visible]);
 
   const rfEdges = useMemo<RFEdge[]>(
@@ -103,8 +123,11 @@ function CanvasInner() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      // Position is owned by the store, so only drag-end is persisted; React
-      // Flow's own position updates are handled by re-deriving rfNodes.
+      // Apply everything React Flow reports — measurements, drag positions,
+      // selection. The store stays the source of truth for *persisted*
+      // position: only drag-end writes back, so a drag is one round trip
+      // rather than one per frame.
+      setRfNodes((ns) => applyNodeChanges(changes, ns));
       for (const c of changes) {
         if (c.type === "select" && c.selected) select(c.id);
       }

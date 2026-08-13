@@ -37,6 +37,11 @@ type Server struct {
 	pollInterval time.Duration
 }
 
+// MediaURLPrefix is where files from the project's .assets directory are
+// served. It must never overlap with the compiled frontend's asset directory,
+// which Vite fixes at /assets/.
+const MediaURLPrefix = "/media/"
+
 // defaultPollInterval balances responsiveness against waking the disk. Changes
 // made in this process are broadcast immediately regardless; this only governs
 // how fast an edit from another process shows up.
@@ -88,10 +93,19 @@ func (s *Server) routes() {
 	api("assets", s.handleAssetUpload)
 
 	s.mux.Handle("/ws", http.HandlerFunc(s.handleWS))
+
 	// Local media is served straight off disk so that images survive a
 	// rebuild of the binary and stay editable outside the app.
-	s.mux.Handle("/assets/", http.StripPrefix("/assets/",
+	//
+	// The prefix is /media/ and not /assets/ for a specific reason: Vite emits
+	// the compiled frontend into /assets/, so mounting user media there
+	// shadowed the bundle. Every request for the app's own JS and CSS was
+	// answered by this file server, found nothing on disk, and 404'd — which
+	// presents as a blank page, since the HTML and the body background load
+	// fine and only the script is missing.
+	s.mux.Handle(MediaURLPrefix, http.StripPrefix(MediaURLPrefix,
 		http.FileServer(http.Dir(s.st.AssetsDir()))))
+
 	s.mux.Handle("/", http.HandlerFunc(s.handleUI))
 }
 

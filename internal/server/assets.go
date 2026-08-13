@@ -108,7 +108,7 @@ func (s *Server) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	asset := store.Asset{
-		Path:    "/assets/" + name, // how the browser fetches it
+		Path:    MediaURLPrefix + name, // how the browser fetches it
 		Kind:    kindFor(mimeType),
 		Caption: strings.TrimSuffix(filepath.Base(header.Filename), ext),
 		Mime:    mimeType,

@@ -55,9 +55,15 @@ function NodeCardImpl({ data, selected }: NodeProps) {
       data-testid={`node-${node.id}`}
     >
       {/* Both handles sit on every node; the IBIS grammar, not the UI, decides
-          whether a dragged connection is legal. */}
-      <Handle type="target" position={Position.Top} className="node__handle" />
-      <Handle type="source" position={Position.Bottom} className="node__handle" />
+          whether a dragged connection is legal.
+
+          Source on top, target on bottom — which looks backwards until you
+          remember IBIS edges point child to parent ("this Pro supports that
+          Idea") while the layout puts children underneath. With the handles
+          the other way round, every edge left the child's bottom edge and
+          looped back up to the parent, crossing its own node. */}
+      <Handle type="source" position={Position.Top} className="node__handle" />
+      <Handle type="target" position={Position.Bottom} className="node__handle" />
 
       <header className="node__head">
         <span className="node__glyph" title={NODE_LABELS[node.type]} aria-hidden>

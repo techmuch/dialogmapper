@@ -20,7 +20,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://127.0.0.1:7373",
-      "/assets/": "http://127.0.0.1:7373",
+      // Uploaded images only. Never proxy /assets/ — that is where Vite serves
+      // the app's own modules from, and forwarding it to Go breaks dev mode.
+      "/media": "http://127.0.0.1:7373",
       "/ws": { target: "ws://127.0.0.1:7373", ws: true },
     },
   },
