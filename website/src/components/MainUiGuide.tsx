@@ -177,6 +177,15 @@ const uiFeatures: UiFeature[] = [
     description: 'Visual markers for resolved, parked, shared, or attached content.',
     howToUse: 'Look at the top-right badges on any card: `✓` (Resolved), `◷` (Parked), `✳n` (Shared), `▤` (Attachments).',
     whyItMatters: 'Conveys node status and transclusion count at a glance.'
+  },
+  {
+    id: 'group-boxes',
+    category: 'nodecard',
+    name: 'Spatial Group Boxes',
+    badge: 'Cluster',
+    description: 'Resizable visual containers drawn around clusters of nodes.',
+    howToUse: 'Double-click the group title (e.g. "Cluster") to edit its label. Drag handles on edges to resize width and height. Click × to delete the group box container.',
+    whyItMatters: 'Carries zero IBIS grammar weight and creates no graph edges. Teams can organize clusters by topic or owner without polluting the decision tree.'
   }
 ];
 

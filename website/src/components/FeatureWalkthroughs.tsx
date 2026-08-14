@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Zap, GitFork, LayoutGrid, Smartphone, Bot, Database, CheckCircle, CornerDownRight, Undo2 } from 'lucide-react';
+import { ShieldCheck, Zap, GitFork, LayoutGrid, Smartphone, Bot, Database, CheckCircle, CornerDownRight, Undo2, BoxSelect } from 'lucide-react';
 
 export const FeatureWalkthroughs: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'grammar' | 'capture' | 'transclusion' | 'layout' | 'mobile' | 'ai' | 'sync'>('grammar');
+  const [activeTab, setActiveTab] = useState<'grammar' | 'capture' | 'groups' | 'transclusion' | 'layout' | 'mobile' | 'ai' | 'sync'>('grammar');
 
   return (
     <section id="features" style={{ padding: '5rem 0', background: 'var(--bg-card)' }}>
@@ -35,7 +35,15 @@ export const FeatureWalkthroughs: React.FC = () => {
             className={`tab-btn ${activeTab === 'capture' ? 'active' : ''}`}
           >
             <Zap style={{ width: '1.1rem', height: '1.1rem' }} />
-            <span>Capture Loop</span>
+            <span>Capture Loop & Undo</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('groups')}
+            className={`tab-btn ${activeTab === 'groups' ? 'active' : ''}`}
+          >
+            <BoxSelect style={{ width: '1.1rem', height: '1.1rem' }} />
+            <span>Spatial Group Boxes</span>
           </button>
 
           <button
@@ -162,20 +170,6 @@ export const FeatureWalkthroughs: React.FC = () => {
                   </div>
                   <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Tidy tree alignment</span>
                 </div>
-
-                <div style={{ background: 'var(--bg-dark)', padding: '0.875rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                    <kbd className="kbd">⌘Z</kbd> <span style={{ fontWeight: 600 }}>Undo</span>
-                  </div>
-                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Your own actions only</span>
-                </div>
-
-                <div style={{ background: 'var(--bg-dark)', padding: '0.875rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                    <kbd className="kbd">/</kbd> <span style={{ fontWeight: 600 }}>Insert Existing</span>
-                  </div>
-                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Search every map</span>
-                </div>
               </div>
             </div>
 
@@ -196,17 +190,75 @@ export const FeatureWalkthroughs: React.FC = () => {
                   <span>Undo That Cannot Clobber a Teammate</span>
                 </div>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                  Undo history lives in SQLite, not the browser, so it survives a reload and works from the CLI too — <code>dialogmapper undo</code> can reverse an entire <code>seed</code> run. Each entry records who made the change, and <kbd className="kbd">⌘Z</kbd> only ever walks back your own: a note someone just sent from their phone is never silently deleted.
-                </p>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6, marginTop: '0.75rem' }}>
-                  Deleting a shared node takes its edges and its placement on every map with it, so the journal stores the whole subgraph. Undo restores the argument, not just the box.
+                  Undo history lives in SQLite, so it works across restarts and CLI operations too. Each entry tracks who made the change, so pressing <kbd className="kbd">⌘Z</kbd> only ever reverses your own actions.
                 </p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Tab Content 3: Transclusion */}
+        {/* Tab Content 3: Spatial Group Boxes */}
+        {activeTab === 'groups' && (
+          <div className="grid-2" style={{ alignItems: 'center' }}>
+            <div>
+              <h3 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '1rem' }}>
+                Spatial Group Boxes: Visual Clustering Without Graph Pollution
+              </h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.7 }}>
+                Group boxes are resizable bounding containers drawn around clusters of nodes. They allow facilitators and teams to group ideas by theme, team owner, or "parking lot" areas without corrupting the decision graph.
+              </p>
+
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.875rem', marginBottom: '1.5rem' }}>
+                <li style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <CheckCircle style={{ width: '1.25rem', height: '1.25rem', color: 'var(--ibis-pro)', flexShrink: 0, marginTop: '0.15rem' }} />
+                  <div>
+                    <strong style={{ color: '#fff' }}>Purely Spatial (No IBIS Pollution):</strong> Groups carry zero IBIS grammar weight and create no edges. Encoding spatial clusters as relationships would pollute the clean argument tree that AI agents and markdown exporters rely on.
+                  </div>
+                </li>
+                <li style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <CheckCircle style={{ width: '1.25rem', height: '1.25rem', color: 'var(--ibis-pro)', flexShrink: 0, marginTop: '0.15rem' }} />
+                  <div>
+                    <strong style={{ color: '#fff' }}>Double-Click Label Editing:</strong> Double-click the group title (e.g. "Cluster", "Architecture Tradeoffs", "Parking Lot") to rename. Press <code>Enter</code> to commit.
+                  </div>
+                </li>
+                <li style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <CheckCircle style={{ width: '1.25rem', height: '1.25rem', color: 'var(--ibis-pro)', flexShrink: 0, marginTop: '0.15rem' }} />
+                  <div>
+                    <strong style={{ color: '#fff' }}>Non-Destructive Deletion:</strong> Clicking <code>×</code> on a group box removes the visual container, leaving all enclosed IBIS nodes and edges completely untouched.
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <div className="card" style={{ background: '#090e1b', border: '1.5px dashed var(--accent-cyan)', borderRadius: '0.75rem', padding: '1.5rem', position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                <span style={{ fontWeight: 700, color: 'var(--accent-cyan)', fontSize: '0.9375rem' }}>
+                  Group: Database Architecture Options
+                </span>
+                <span style={{ fontSize: '0.75rem', background: 'rgba(56, 189, 248, 0.12)', color: 'var(--accent-cyan)', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', fontWeight: 600 }}>
+                  Spatial Container
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ background: 'var(--bg-card)', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span className="ibis-badge idea">Idea</span>
+                  <span style={{ fontSize: '0.875rem' }}>Poll SQLite data_version & broadcast WS</span>
+                </div>
+                <div style={{ background: 'var(--bg-card)', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1.25rem' }}>
+                  <span className="ibis-badge pro">Pro</span>
+                  <span style={{ fontSize: '0.875rem' }}>Pure Go modernc.org/sqlite (no cgo)</span>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '1rem', fontSize: '0.8125rem', color: 'var(--text-dim)', textAlign: 'right' }}>
+                Resize handles on corners & edges
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab Content 4: Transclusion */}
         {activeTab === 'transclusion' && (
           <div className="grid-2" style={{ alignItems: 'center' }}>
             <div>
@@ -248,7 +300,7 @@ export const FeatureWalkthroughs: React.FC = () => {
           </div>
         )}
 
-        {/* Tab Content 4: Layout */}
+        {/* Tab Content 5: Layout */}
         {activeTab === 'layout' && (
           <div className="grid-2" style={{ alignItems: 'center' }}>
             <div>
@@ -272,7 +324,7 @@ export const FeatureWalkthroughs: React.FC = () => {
           </div>
         )}
 
-        {/* Tab Content 5: Mobile */}
+        {/* Tab Content 6: Mobile */}
         {activeTab === 'mobile' && (
           <div className="grid-2" style={{ alignItems: 'center' }}>
             <div>
@@ -299,7 +351,7 @@ export const FeatureWalkthroughs: React.FC = () => {
           </div>
         )}
 
-        {/* Tab Content 6: AI */}
+        {/* Tab Content 7: AI */}
         {activeTab === 'ai' && (
           <div className="grid-2" style={{ alignItems: 'center' }}>
             <div>
@@ -340,7 +392,7 @@ export const FeatureWalkthroughs: React.FC = () => {
           </div>
         )}
 
-        {/* Tab Content 7: SQLite & Sync */}
+        {/* Tab Content 8: SQLite & Sync */}
         {activeTab === 'sync' && (
           <div className="grid-2" style={{ alignItems: 'center' }}>
             <div>

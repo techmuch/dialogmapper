@@ -8,7 +8,7 @@ export const Navbar: React.FC = () => {
         <a href="#" className="logo">
           <Network className="w-6 h-6" style={{ color: '#38bdf8' }} />
           <span>dialogmapper</span>
-          <span className="logo-badge">v0.0.6</span>
+          <span className="logo-badge">v0.0.7</span>
         </a>
 
         <nav>
