@@ -8,7 +8,7 @@ BINARY  := dialogmapper
 VERSION ?= v0.0.3
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build web go-build dev test lint clean install release
+.PHONY: all build web website go-build dev test lint clean install release
 
 all: build
 
@@ -17,6 +17,9 @@ build: web go-build
 
 web:
 	cd web && npm install --no-audit --no-fund && npm run build
+
+website:
+	cd website && npm install --no-audit --no-fund && npm run build
 
 go-build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
@@ -52,7 +55,7 @@ release: web
 	done
 
 clean:
-	rm -rf $(BINARY) dist web/node_modules internal/web/dist
+	rm -rf $(BINARY) dist web/node_modules internal/web/dist website/dist website/node_modules
 	@mkdir -p internal/web/dist
 	@echo '<!doctype html><title>dialogmapper</title><p>Run `make web` to build the frontend.' \
 		> internal/web/dist/index.html
