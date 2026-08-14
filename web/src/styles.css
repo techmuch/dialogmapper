@@ -403,10 +403,44 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .palette__meta { font-size: 11px; color: var(--fg-dim); }
 .palette__empty { color: var(--fg-dim); justify-content: center; cursor: default; }
 
-.help { padding: 20px 24px 24px; }
+.help {
+  padding: 20px 24px 24px;
+  /* The panel grew past the viewport once the QR section was added, putting
+     the close button off-screen with no way to scroll to it. */
+  max-height: 76vh;
+  overflow-y: auto;
+}
 .help h2 { margin: 0 0 6px; }
 .help h3 { margin: 18px 0 6px; font-size: 13px; }
 .help__lede { color: var(--fg-dim); line-height: 1.55; margin: 0 0 12px; }
+.qr { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 18px; }
+.qr__code {
+  /* A white quiet zone matters: a QR floated straight onto a dark panel
+     loses the margin scanners rely on to find the code. */
+  background: #fff;
+  padding: 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+.qr__detail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.qr__detail .help__lede { margin: 0; }
+.qr__url {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  word-break: break-all;
+}
+.qr__unavailable {
+  background: rgba(224, 175, 104, .1);
+  border: 1px solid rgba(224, 175, 104, .35);
+  border-radius: 8px;
+  padding: 12px 14px;
+  width: 100%;
+}
+.qr__unavailable strong { color: var(--idea); }
+.qr__unavailable p { margin: 6px 0 0; color: var(--fg-dim); line-height: 1.5; }
+
 .help dl { margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .help__row { display: flex; gap: 12px; align-items: baseline; }
 .help__row dt { min-width: 88px; }

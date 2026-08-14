@@ -108,6 +108,22 @@ Layout is per-map: the same node can sit in a different place on each canvas.
 
 ## Mobile
 
+Press `?` on the canvas for a QR code, or scan the one `dialogmapper start`
+prints in your terminal. The link opens the phone view directly.
+
+`start` binds `0.0.0.0` by default so this works with no extra step. Because
+that also puts the maps on whatever network the machine is attached to, each
+run mints an access key that the QR link carries. Connections from the machine
+itself are exempt, so the desktop canvas is unaffected:
+
+```
+dialogmapper start                     # LAN + access key (default)
+dialogmapper start --host 127.0.0.1    # this machine only, no key needed
+dialogmapper start --no-token          # LAN, no key — anyone who can reach the port can edit
+```
+
+The key lives only in memory and dies with the server.
+
 Phones get a different product, not a shrunken canvas. Someone on a phone is a
 participant rather than a facilitator: they see a reverse-chronological feed,
 search across every map, and tap a node to add a reply. The composer only

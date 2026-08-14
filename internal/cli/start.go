@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +24,8 @@ func newStartCmd() *cobra.Command {
 	var port int
 	var host string
 	var open bool
+	var noToken bool
+	var noQR bool
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -51,6 +55,23 @@ process writing to the same database — is broadcast to all connected clients.`
 			if err != nil {
 				return err
 			}
+
+			// Serving on every interface is what makes joining from a phone a
+			// single scan. It also puts the maps on whatever network the
+			// laptop is attached to, so a per-run key is required from
+			// anything that is not this machine. The desktop canvas is
+			// unaffected: loopback is always allowed.
+			tcpAddr, _ := ln.Addr().(*net.TCPAddr)
+			boundToAll := tcpAddr != nil && tcpAddr.IP.IsUnspecified()
+			port := ""
+			if tcpAddr != nil {
+				port = fmt.Sprint(tcpAddr.Port)
+			}
+			srv.Bind(host, port, boundToAll)
+
+			exposed := boundToAll || (tcpAddr != nil && !tcpAddr.IP.IsLoopback())
+			token := server.NewAccessToken(exposed && !noToken)
+			srv.SetToken(token)
 			httpSrv := &http.Server{
 				Handler:           srv,
 				ReadHeaderTimeout: 10 * time.Second,
@@ -60,7 +81,31 @@ process writing to the same database — is broadcast to all connected clients.`
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "dialogmapper serving %s\n", st.Root())
 			fmt.Fprintf(out, "  → %s\n", url)
-			fmt.Fprintf(out, "  Press Ctrl-C to stop.\n")
+
+			// A phone joining is the one setup step that happens in front of
+			// a waiting room, so the QR goes where the user is already
+			// looking: the terminal they just typed into.
+			access := srv.MobileURL()
+			if access.Reachable && !noQR {
+				fmt.Fprintf(out, "\n  Phones on this network: %s\n", access.URL)
+				if code, err := server.ASCIIQR(access.URL, isTerminal(out)); err == nil {
+					fmt.Fprintln(out)
+					for _, line := range strings.Split(strings.TrimRight(code, "\n"), "\n") {
+						fmt.Fprintf(out, "  %s\n", line)
+					}
+				}
+				if token.Value() != "" {
+					fmt.Fprintf(out, "\n  Reachable from this network; the link above carries a key\n")
+					fmt.Fprintf(out, "  valid until this server stops. Use --host 127.0.0.1 to keep\n")
+					fmt.Fprintf(out, "  it to this machine, or --no-token to drop the key.\n")
+				} else {
+					fmt.Fprintf(out, "\n  ⚠ Reachable from this network with no access key.\n")
+				}
+			} else if !access.Reachable {
+				fmt.Fprintf(out, "  (local only — %s)\n", access.Hint)
+			}
+
+			fmt.Fprintf(out, "\n  Press Ctrl-C to stop.\n")
 
 			ctx, stop := signal.NotifyContext(context.Background(),
 				os.Interrupt, syscall.SIGTERM)
@@ -101,10 +146,28 @@ process writing to the same database — is broadcast to all connected clients.`
 	}
 
 	cmd.Flags().IntVarP(&port, "port", "p", 7373, "port to listen on (0 picks a free one)")
-	cmd.Flags().StringVar(&host, "host", "127.0.0.1",
-		"interface to bind; use 0.0.0.0 to reach it from your phone on the same network")
+	cmd.Flags().StringVar(&host, "host", "0.0.0.0",
+		"interface to bind; use 127.0.0.1 to keep the map to this machine only")
 	cmd.Flags().BoolVar(&open, "open", false, "open the map in your default browser")
+	cmd.Flags().BoolVar(&noToken, "no-token", false,
+		"serve to the network without an access key (anyone who can reach the port can edit)")
+	cmd.Flags().BoolVar(&noQR, "no-qr", false, "do not print the QR code on startup")
 	return cmd
+}
+
+// isTerminal reports whether output is going to a terminal, so the QR only
+// emits ANSI colour when something can render it. Redirected output gets the
+// uncoloured fallback rather than a file full of escape sequences.
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 // localURLHost renders a listener address as something a browser will accept.

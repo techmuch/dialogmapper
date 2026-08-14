@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Zap, GitFork, LayoutGrid, Smartphone, Bot, Database, CheckCircle, CornerDownRight, Undo2, BoxSelect } from 'lucide-react';
+import { ShieldCheck, Zap, GitFork, LayoutGrid, Smartphone, Bot, Database, CheckCircle, CornerDownRight, Undo2, BoxSelect, QrCode } from 'lucide-react';
 
 export const FeatureWalkthroughs: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'grammar' | 'capture' | 'groups' | 'transclusion' | 'layout' | 'mobile' | 'ai' | 'sync'>('grammar');
@@ -338,14 +338,20 @@ export const FeatureWalkthroughs: React.FC = () => {
                 <div>✓ Only legal replies are offered when a node is tapped</div>
                 <div>✓ Mobile replies appear instantly on desktop canvas via WebSockets</div>
                 <div>✓ Placed automatically by tree auto-layout</div>
+                <div>✓ Join by scanning a QR — no app, no typing an IP address</div>
               </div>
             </div>
 
-            <div className="card" style={{ background: '#090d18', textAlign: 'center', padding: '2rem' }}>
-              <Smartphone style={{ width: '3rem', height: '3rem', color: 'var(--accent-cyan)', margin: '0 auto 1rem auto' }} />
-              <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>Participant Feed Mode</h4>
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                Connects from any phone on the LAN without app installs.
+            <div className="card" style={{ background: '#090d18', padding: '2rem' }}>
+              <div style={{ textAlign: 'center' }}>
+                <QrCode style={{ width: '3rem', height: '3rem', color: 'var(--accent-cyan)', margin: '0 auto 1rem auto' }} />
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem' }}>One Scan to Join</h4>
+              </div>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Press <kbd className="kbd">?</kbd> on the canvas for a QR code, or scan the one printed in your terminal when the server starts. The code carries the machine's LAN address — never <code>localhost</code>, which would send the phone to itself.
+              </p>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.6, marginTop: '0.75rem' }}>
+                Serving on the network also means anyone on it could reach the maps, so each run mints an access key that the QR link carries. Connections from the machine itself are exempt, so the desktop canvas is unaffected.
               </p>
             </div>
           </div>

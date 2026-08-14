@@ -131,6 +131,15 @@ export interface ServerEvent {
   payload?: any;
 }
 
+/** How, and whether, a phone on the same network can reach this server. */
+export interface MobileAccess {
+  url: string;
+  /** False when the server is bound to loopback — nothing to scan. */
+  reachable: boolean;
+  host: string;
+  hint: string;
+}
+
 /** One reversible action from the server's undo journal. */
 export interface UndoEntry {
   id: number;

@@ -16,9 +16,9 @@ const commands: CliCmd[] = [
   },
   {
     name: 'start',
-    args: '--open [--port 7373] [--host 0.0.0.0]',
-    description: 'Serves the HTTP API, WebSocket fanout, and embedded SPA. Prints LAN IP for mobile participants when hosted on 0.0.0.0.',
-    example: 'dialogmapper start --open --port 7373'
+    args: '--open [--port 7373] [--host 127.0.0.1] [--no-token]',
+    description: 'Serves the HTTP API, WebSocket fanout, and embedded SPA. Binds every interface by default and prints a scannable QR for phones, gated by a per-run access key that the QR link carries. Loopback is exempt, so the desktop canvas needs no key.',
+    example: 'dialogmapper start --open'
   },
   {
     name: 'seed',

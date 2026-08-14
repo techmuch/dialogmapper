@@ -35,7 +35,33 @@ type Server struct {
 	// pollInterval is how often external writes are checked for. Tests turn
 	// it down so they assert on behaviour rather than on the clock.
 	pollInterval time.Duration
+
+	// token gates requests arriving from other machines. Serving on every
+	// interface by default makes joining from a phone effortless; without
+	// this it would also make the maps world-writable on any network the
+	// laptop joins.
+	token *AccessToken
+
+	// How the listener was bound, so the QR can publish an address that is
+	// actually reachable rather than whatever the request happened to use.
+	boundHost  string
+	boundPort  string
+	boundToAll bool
 }
+
+// Bind records how the server is listening. Called by the CLI once the
+// listener exists, because only then is the real port known — `--port 0` is
+// resolved by the kernel.
+func (s *Server) Bind(host, port string, toAll bool) {
+	s.boundHost, s.boundPort, s.boundToAll = host, port, toAll
+}
+
+// SetToken installs the access token. A nil or disabled token allows
+// everything, which is what `--no-token` and loopback-only runs want.
+func (s *Server) SetToken(t *AccessToken) { s.token = t }
+
+// MobileURL returns the URL a phone should open, for the startup banner.
+func (s *Server) MobileURL() MobileAccess { return s.mobileAccess(nil) }
 
 // MediaURLPrefix is where files from the project's .assets directory are
 // served. It must never overlap with the compiled frontend's asset directory,
@@ -56,6 +82,9 @@ func New(st *store.Store) (*Server, error) {
 	s := &Server{
 		st: st, hub: newHub(), ui: ui, mux: http.NewServeMux(),
 		pollInterval: defaultPollInterval,
+		// Disabled by default so that embedding the server, and every existing
+		// test, behaves as before. The CLI turns it on.
+		token: NewAccessToken(false),
 	}
 	s.routes()
 	go s.hub.run()
@@ -68,6 +97,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// origins stops a random website from editing the user's maps.
 	if origin := r.Header.Get("Origin"); origin != "" && !isLocalOrigin(origin, r.Host) {
 		http.Error(w, "cross-origin requests are not accepted", http.StatusForbidden)
+		return
+	}
+	// Access control runs before routing so one rule covers the API, the
+	// WebSocket, uploaded media and the SPA, rather than each handler having
+	// to remember to ask.
+	if !s.guard(w, r) {
 		return
 	}
 	s.mux.ServeHTTP(w, r)
@@ -93,6 +128,8 @@ func (s *Server) routes() {
 	api("assets", s.handleAssetUpload)
 	api("undo", s.handleUndo)
 	api("redo", s.handleRedo)
+	api("mobile", s.handleMobileInfo)
+	api("qr.png", s.handleQR)
 
 	s.mux.Handle("/ws", http.HandlerFunc(s.handleWS))
 

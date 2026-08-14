@@ -7,6 +7,7 @@ import type {
   Graph,
   Grammar,
   IbisViolation,
+  MobileAccess,
   NodeType,
   Relationship,
   Status,
@@ -214,6 +215,12 @@ export const api = {
   /** Depth and labels, for enabling and titling the toolbar buttons. */
   undoState: (mapId?: string) =>
     request<UndoState>(`/api/undo${mapId ? `?mapId=${mapId}` : ""}`),
+
+  /**
+   * Where a phone should point. Answered by the server because only it knows
+   * which interface it is bound to and what this session's access key is.
+   */
+  mobileAccess: () => request<MobileAccess>("/api/mobile"),
 
   uploadAsset: async (file: File, nodeId?: string) => {
     const fd = new FormData();
