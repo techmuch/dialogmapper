@@ -8,12 +8,13 @@ export const Navbar: React.FC = () => {
         <a href="#" className="logo">
           <Network className="w-6 h-6" style={{ color: '#38bdf8' }} />
           <span>dialogmapper</span>
-          <span className="logo-badge">v0.0.5</span>
+          <span className="logo-badge">v0.0.6</span>
         </a>
 
         <nav>
           <ul className="nav-links">
             <li><a href="#features" className="nav-link">Features</a></li>
+            <li><a href="#ui-guide" className="nav-link">UI Buttons Guide</a></li>
             <li><a href="#sandbox" className="nav-link">Live Demo</a></li>
             <li><a href="#install" className="nav-link">Install</a></li>
             <li><a href="#cli" className="nav-link">CLI Commands</a></li>

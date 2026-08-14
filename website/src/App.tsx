@@ -2,6 +2,7 @@ import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { InteractiveSandbox } from './components/InteractiveSandbox';
 import { FeatureWalkthroughs } from './components/FeatureWalkthroughs';
+import { MainUiGuide } from './components/MainUiGuide';
 import { InstallationGuide } from './components/InstallationGuide';
 import { CliCheatsheet } from './components/CliCheatsheet';
 import { ArchitectureSection } from './components/ArchitectureSection';
@@ -15,6 +16,7 @@ export function App() {
         <Hero />
         <InteractiveSandbox />
         <FeatureWalkthroughs />
+        <MainUiGuide />
         <InstallationGuide />
         <CliCheatsheet />
         <ArchitectureSection />
