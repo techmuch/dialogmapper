@@ -8,6 +8,8 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStore,
+  ViewportPortal,
   type Connection,
   type Edge as RFEdge,
   type Node as RFNode,
@@ -40,6 +42,9 @@ function CanvasInner() {
   const [armedGroup, setArmedGroup] = useState(false);
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const rf = useReactFlow();
+  // Reactive zoom, so the preview outline stays a constant on-screen weight
+  // while the user zooms rather than only being right at first render.
+  const zoom = useStore((s) => s.transform[2]);
 
   const nodes = useGraph((s) => s.nodes);
   const edges = useGraph((s) => s.edges);
@@ -222,6 +227,15 @@ function CanvasInner() {
         fitViewOptions={{ padding: 0.25 }}
         deleteKeyCode={null}
         multiSelectionKeyCode={null}
+        // React Flow makes node wrappers focusable and focuses the newly
+        // selected one for its own keyboard accessibility. That fires after
+        // the title editor has focused itself, so pressing `q` opened an
+        // editor and then quietly moved focus to the wrapper div — the user
+        // typed and nothing landed, which breaks the entire capture loop.
+        // Selection and arrow-key navigation are ours (see useKeyboard), so
+        // React Flow has no reason to manage focus here.
+        nodesFocusable={false}
+        edgesFocusable={false}
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} />
         <Controls position="bottom-left" showInteractive={false} />
@@ -241,16 +255,31 @@ function CanvasInner() {
           />
         )}
 
-        {ui.drawingGroup && (
-          <div
-            className="group-preview"
-            style={{
-              transform: `translate(${ui.drawingGroup.x}px, ${ui.drawingGroup.y}px)`,
-              width: ui.drawingGroup.w,
-              height: ui.drawingGroup.h,
-            }}
-          />
-        )}
+        {/*
+          The preview must live inside the viewport transform, not alongside
+          it. As a plain child of <ReactFlow> it was positioned in screen
+          pixels while its coordinates came from screenToFlowPosition — so the
+          rubber band drifted from the cursor by the current pan, and scaled
+          wrongly with zoom, then snapped into place on release because the
+          saved group is a real node in flow space. ViewportPortal renders into
+          the transformed pane, where flow coordinates are what's wanted.
+        */}
+        <ViewportPortal>
+          {ui.drawingGroup && (
+            <div
+              className="group-preview"
+              style={{
+                transform: `translate(${ui.drawingGroup.x}px, ${ui.drawingGroup.y}px)`,
+                width: ui.drawingGroup.w,
+                height: ui.drawingGroup.h,
+                // Inside the viewport everything scales with zoom, which would
+                // make the outline a hairline when zoomed out and heavy when
+                // zoomed in. Dividing by zoom keeps it constant on screen.
+                borderWidth: 1.5 / zoom,
+              }}
+            />
+          )}
+        </ViewportPortal>
       </ReactFlow>
 
       <button

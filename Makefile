@@ -5,10 +5,10 @@
 # dependencies — not even a Node install on the target machine.
 
 BINARY  := dialogmapper
-VERSION ?= v0.0.8
+VERSION ?= v0.0.9
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build web website go-build dev test lint clean install release
+.PHONY: all build web website go-build dev test test-e2e e2e-browser lint clean install release
 
 all: build
 
@@ -35,6 +35,17 @@ test:
 	go test ./...
 	cd web && npm run typecheck
 
+## test-e2e: drive the built binary in a real browser.
+## Depends on `build` because the tests run the embedded frontend, not the dev
+## server — three shipped bugs were in exactly that gap between the two.
+test-e2e: build
+	cd e2e && npm install --no-audit --no-fund && npm test
+
+## e2e-browser: one-off Chromium download for the e2e suite.
+## In CI use `npx playwright install --with-deps chromium` to pull system libs.
+e2e-browser:
+	cd e2e && npm install --no-audit --no-fund && npm run install-browser
+
 lint:
 	gofmt -l main.go internal/
 	go vet ./...
@@ -55,7 +66,8 @@ release: web
 	done
 
 clean:
-	rm -rf $(BINARY) dist web/node_modules internal/web/dist website/dist website/node_modules
+	rm -rf $(BINARY) dist web/node_modules internal/web/dist website/dist website/node_modules \
+		e2e/node_modules e2e/test-results e2e/playwright-report
 	@mkdir -p internal/web/dist
 	@echo '<!doctype html><title>dialogmapper</title><p>Run `make web` to build the frontend.' \
 		> internal/web/dist/index.html

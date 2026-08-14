@@ -1,0 +1,19 @@
+{
+  "name": "dialogmapper-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Browser tests that drive the real dialogmapper binary. Kept out of web/ so the frontend build never pulls in a browser runtime.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report",
+    "install-browser": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
+    "@types/pngjs": "^6.0.5"
+  }
+}

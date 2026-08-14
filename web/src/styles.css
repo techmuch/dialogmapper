@@ -156,9 +156,15 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .canvas__group-btn.is-armed { background: var(--accent); color: #0b0f14; border-color: var(--accent); }
 .canvas__filter-note { left: 12px; bottom: 120px; color: var(--idea); }
 
+/* Rendered inside the React Flow viewport (see ViewportPortal in Canvas.tsx),
+   so these coordinates are flow coordinates and the box tracks the cursor
+   under any pan or zoom. Border width is set inline, scaled by zoom. */
 .group-preview {
   position: absolute;
-  border: 1.5px dashed var(--accent);
+  top: 0;
+  left: 0;
+  border-style: dashed;
+  border-color: var(--accent);
   background: rgba(122, 162, 247, .07);
   border-radius: 10px;
   pointer-events: none;

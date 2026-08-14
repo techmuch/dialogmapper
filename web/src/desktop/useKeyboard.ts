@@ -50,6 +50,15 @@ export function useKeyboard({ flow, visibleNodes }: Options) {
       // While typing, the only global keys are Escape and Enter, and the
       // node's own input handles those. Everything else belongs to the text.
       if (isTyping(ev.target)) return;
+
+      // An editor being open is enough to disable the shortcuts, even if focus
+      // has not reached it yet. React Flow hides a freshly added node until it
+      // has measured it, so there is a window of a few frames after `q` where
+      // the editor exists but cannot take focus. A fast typist types into that
+      // gap, and every letter is a shortcut: "n" makes a note, space zooms to
+      // fit. The result was stray nodes appearing mid-sentence.
+      if (g.editingId) return;
+
       if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 
       const selected = g.selectedId ? g.nodes[g.selectedId] : null;

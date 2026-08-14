@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -49,7 +50,14 @@ process writing to the same database — is broadcast to all connected clients.`
 			if err != nil {
 				return fmt.Errorf("cannot listen on %s: %w", addr, err)
 			}
-			url := fmt.Sprintf("http://%s", localURLHost(ln.Addr()))
+			// The URL for the browser on this machine. Deliberately not the LAN
+			// address: that is for phones, and pointing the local browser at it
+			// is wrong twice over. It is a needless trip through the network
+			// stack, and the access key treats a connection by its source
+			// address — so a browser here reaching the LAN IP looks remote and
+			// is refused. `--open` used to land on the "not open to the
+			// network" page for that reason.
+			localURL := fmt.Sprintf("http://%s", localBrowserHost(ln.Addr()))
 
 			srv, err := server.New(st)
 			if err != nil {
@@ -78,9 +86,18 @@ process writing to the same database — is broadcast to all connected clients.`
 				// No WriteTimeout: it would sever long-lived WebSockets.
 			}
 
+			// Where `--open` sends the browser. Normally the loopback URL needs
+			// no key; only an explicit bind to one non-loopback interface makes
+			// even the local browser look remote, and then the key has to ride
+			// along or the page is refused.
+			openURL := localURL
+			if k := token.Value(); k != "" && !hostIsLoopback(localURL) {
+				openURL += "/?k=" + k
+			}
+
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "dialogmapper serving %s\n", st.Root())
-			fmt.Fprintf(out, "  → %s\n", url)
+			fmt.Fprintf(out, "  → %s\n", localURL)
 
 			// A phone joining is the one setup step that happens in front of
 			// a waiting room, so the QR goes where the user is already
@@ -126,7 +143,7 @@ process writing to the same database — is broadcast to all connected clients.`
 				// Give the listener a moment so the first request is not a
 				// connection refused on slower machines.
 				time.AfterFunc(150*time.Millisecond, func() {
-					if err := openBrowser(url); err != nil {
+					if err := openBrowser(openURL); err != nil {
 						fmt.Fprintf(out, "  (could not open a browser: %v)\n", err)
 					}
 				})
@@ -170,36 +187,42 @@ func isTerminal(w io.Writer) bool {
 	return info.Mode()&os.ModeCharDevice != 0
 }
 
-// localURLHost renders a listener address as something a browser will accept.
-// Binding 0.0.0.0 is common (so a phone can connect) but is not a valid host
-// to navigate to, so it is rewritten to the machine's LAN address.
-func localURLHost(addr net.Addr) string {
+// localBrowserHost renders a listener address for the browser on this machine.
+//
+// Binding 0.0.0.0 means "every interface", which includes loopback, so the
+// right answer is 127.0.0.1 — not the LAN address. Reaching the machine's own
+// LAN address from a browser on that machine works, but the connection carries
+// the LAN address as its source, so the access key treats it as coming from
+// somewhere else and refuses it.
+//
+// 127.0.0.1 rather than the name "localhost": on a dual-stack machine that
+// name may resolve to ::1 first, and a listener on 0.0.0.0 is IPv4 only.
+func localBrowserHost(addr net.Addr) string {
 	tcp, ok := addr.(*net.TCPAddr)
 	if !ok {
 		return addr.String()
 	}
+	port := fmt.Sprint(tcp.Port)
 	if tcp.IP.IsUnspecified() {
-		if ip := outboundIP(); ip != "" {
-			return net.JoinHostPort(ip, fmt.Sprint(tcp.Port))
-		}
-		return net.JoinHostPort("localhost", fmt.Sprint(tcp.Port))
+		return net.JoinHostPort("127.0.0.1", port)
 	}
-	return net.JoinHostPort(tcp.IP.String(), fmt.Sprint(tcp.Port))
+	// An explicit bind to one interface: loopback is not being served, so that
+	// address is the only one that can work.
+	return net.JoinHostPort(tcp.IP.String(), port)
 }
 
-// outboundIP finds the LAN address the OS would use to reach the internet.
-// The UDP dial is not a connection — no packets are sent — it just asks the
-// routing table which interface would be chosen.
-func outboundIP() string {
-	conn, err := net.Dial("udp", "192.0.2.1:80") // TEST-NET-1, never routed
+// hostIsLoopback reports whether a URL points back at this machine.
+func hostIsLoopback(rawURL string) bool {
+	u, err := url.Parse(rawURL)
 	if err != nil {
-		return ""
+		return false
 	}
-	defer conn.Close()
-	if a, ok := conn.LocalAddr().(*net.UDPAddr); ok {
-		return a.IP.String()
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
 	}
-	return ""
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // openBrowser launches the platform's default handler for a URL.

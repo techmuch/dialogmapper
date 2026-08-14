@@ -28,13 +28,31 @@ function NodeCardImpl({ data, selected }: NodeProps) {
   useEffect(() => {
     if (!editing) return;
     setDraft(node.title);
-    // Focus on the next frame: React Flow moves the node during mount, and
-    // focusing before that lands the caret and then loses it again.
-    const id = requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    });
-    return () => cancelAnimationFrame(id);
+
+    // Focusing on a single animation frame is not enough, and the way it fails
+    // is silent. React Flow renders a newly added node with visibility:hidden
+    // until it has measured it, and focus() on a hidden element is a no-op
+    // that reports no error. The editor opened, the caret never arrived, and
+    // everything the facilitator typed next went nowhere — which breaks the
+    // capture loop entirely.
+    //
+    // So retry across frames until the focus actually takes, with a deadline
+    // so a node that never becomes visible cannot spin forever.
+    let raf = 0;
+    const deadline = performance.now() + 1000;
+    const tryFocus = () => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        if (document.activeElement === el) {
+          el.select();
+          return;
+        }
+      }
+      if (performance.now() < deadline) raf = requestAnimationFrame(tryFocus);
+    };
+    raf = requestAnimationFrame(tryFocus);
+    return () => cancelAnimationFrame(raf);
   }, [editing, node.title]);
 
   const status = node.content.status;
@@ -121,7 +139,15 @@ function NodeCardImpl({ data, selected }: NodeProps) {
               cancelEdit();
               return;
             }
-            // Otherwise let the textarea have the keystroke.
+            // Modified keystrokes are application shortcuts, not text, so they
+            // must reach the window handler. Swallowing everything here meant
+            // Ctrl+Z inside a title did nothing at all: the global undo
+            // intercept existed but the event never got to it.
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+            // Everything else is plain typing and belongs to the field. It is
+            // stopped here so a letter that is also a canvas shortcut — "n",
+            // "q", "+" — does not create a node while the user is naming one.
             e.stopPropagation();
           }}
         />

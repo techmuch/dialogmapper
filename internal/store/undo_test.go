@@ -182,6 +182,10 @@ func TestUndoEditRestoresPreviousValues(t *testing.T) {
 	as := s.As(alice)
 	m, _ := as.CreateMap("M", "")
 	n, _, _ := as.CreateNode(NewNodeInput{Type: ibis.Idea, Title: "Original", MapID: m.ID})
+	// Break the run, so this is an edit in its own right rather than a
+	// continuation of the create (which would merge — see
+	// TestTitlingANewNodeIsOneAction).
+	as.CreateNode(NewNodeInput{Type: ibis.Note, Title: "Unrelated", MapID: m.ID})
 
 	if _, err := as.UpdateNode(n.ID, NodePatch{
 		Title:  ptr("Changed"),
@@ -215,13 +219,14 @@ func TestConsecutiveEditsCollapse(t *testing.T) {
 	s := newTestStore(t)
 	as := s.As(alice)
 	m, _ := as.CreateMap("M", "")
-	// An empty title is filled in with a placeholder at creation, so that
-	// placeholder is what a full undo of the typing run should restore.
-	n, _, _ := as.CreateNode(NewNodeInput{Type: ibis.Note, Title: "", MapID: m.ID})
-	placeholder := n.Title
+
+	target, _, _ := as.CreateNode(NewNodeInput{Type: ibis.Note, Title: "Original", MapID: m.ID})
+	// Something else in between, so the run of edits below is its own action
+	// rather than a continuation of the create.
+	as.CreateNode(NewNodeInput{Type: ibis.Note, Title: "Unrelated", MapID: m.ID})
 
 	for _, title := range []string{"C", "Ca", "Cac", "Cach", "Cache"} {
-		if _, err := as.UpdateNode(n.ID, NodePatch{Title: ptr(title)}); err != nil {
+		if _, err := as.UpdateNode(target.ID, NodePatch{Title: ptr(title)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -230,18 +235,87 @@ func TestConsecutiveEditsCollapse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// One entry for the create, one for the whole run of edits.
-	if undo != 2 {
-		t.Errorf("undo depth = %d, want 2 (create + one merged edit)", undo)
+	// Two creates, plus one entry for the whole run of five edits.
+	if undo != 3 {
+		t.Errorf("undo depth = %d, want 3 (two creates + one merged edit run)", undo)
 	}
 
 	if _, err := as.Undo(alice, ""); err != nil {
 		t.Fatal(err)
 	}
-	back, _ := s.GetNode(n.ID, "")
-	if back.Title != placeholder {
-		t.Errorf("one undo should revert the whole typing run to %q, got %q",
-			placeholder, back.Title)
+	back, _ := s.GetNode(target.ID, "")
+	if back.Title != "Original" {
+		t.Errorf("one undo should revert the whole typing run, got %q", back.Title)
+	}
+}
+
+// TestTitlingANewNodeIsOneAction covers the capture loop's actual shape: press
+// `q`, type a title, commit. That is one act of authorship, so one Ctrl-Z must
+// remove the node — not leave an untitled one behind, which reads as undo
+// being broken rather than as the title being reverted.
+func TestTitlingANewNodeIsOneAction(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	m, _ := as.CreateMap("M", "")
+
+	q, _, _ := as.CreateNode(NewNodeInput{Type: ibis.Question, Title: "", MapID: m.ID})
+	if _, err := as.UpdateNode(q.ID, NodePatch{Title: ptr("Ship on Fridays?")}); err != nil {
+		t.Fatal(err)
+	}
+
+	if undo, _, _ := s.UndoDepth(alice, m.ID); undo != 1 {
+		t.Errorf("undo depth = %d, want 1 (create and its title are one action)", undo)
+	}
+
+	entry, err := as.Undo(alice, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The label should name the node as titled, not as the placeholder.
+	if !strings.Contains(entry.Label, "Ship on Fridays?") {
+		t.Errorf("label = %q, should name the titled node", entry.Label)
+	}
+	if nodeCount(t, s, m.ID) != 0 {
+		t.Error("one undo should have removed the node entirely")
+	}
+
+	// Redo must bring it back with the typed title, not the placeholder.
+	if _, err := as.Redo(alice, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	back, err := s.GetNode(q.ID, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Title != "Ship on Fridays?" {
+		t.Errorf("redo restored the title as %q, want the typed one", back.Title)
+	}
+}
+
+// An edit long after the fact must not fold into the creation.
+func TestUnrelatedEditDoesNotMergeIntoACreate(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	m, _ := as.CreateMap("M", "")
+
+	n, _, _ := as.CreateNode(NewNodeInput{Type: ibis.Idea, Title: "An idea", MapID: m.ID})
+	as.CreateNode(NewNodeInput{Type: ibis.Note, Title: "Something else", MapID: m.ID})
+
+	if _, err := as.UpdateNode(n.ID, NodePatch{Title: ptr("A better idea")}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Undoing the edit reverts the title and leaves both nodes in place.
+	if _, err := as.Undo(alice, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if nodeCount(t, s, m.ID) != 2 {
+		t.Errorf("the edit should not have merged into the create: %d nodes left",
+			nodeCount(t, s, m.ID))
+	}
+	back, _ := s.GetNode(n.ID, m.ID)
+	if back.Title != "An idea" {
+		t.Errorf("title = %q, want the previous value", back.Title)
 	}
 }
 

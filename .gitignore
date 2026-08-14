@@ -2,6 +2,9 @@
 /dialogmapper
 /dist/
 web/node_modules/
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
 
 # Local project data created by `dialogmapper init` during development
 maps.db

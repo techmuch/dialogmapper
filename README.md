@@ -217,8 +217,22 @@ rejected at write time and skipped.
 Run `go test -race ./...` before touching the hub — the broadcast path is
 concurrent and the race detector is the only thing that will tell you.
 
-Not covered: the React layer has no unit tests. `npm run typecheck` is the only
-guard, and the capture-loop keyboard logic is the part most worth testing next.
+### Browser tests
+
+```
+make e2e-browser   # once: download Chromium
+make test-e2e      # build the binary, then drive it in a real browser
+```
+
+Playwright specs in `e2e/` run the real binary with the real embedded
+frontend. They exist because three bugs shipped with the whole Go suite green —
+a blank page, an empty minimap, and a rubber band drawn in the wrong
+coordinate space. Every one was a case of the server being right and the
+browser being wrong, which nothing server-side can see. See `e2e/README.md`.
+
+Not covered: the React layer has no unit tests. The browser suite covers
+behaviour end to end, but pure logic like `autoLayout` would be cheaper to pin
+with Vitest.
 
 `internal/web/dist` is committed on purpose: `go install` should work for
 someone who has never installed Node.

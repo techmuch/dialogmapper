@@ -404,25 +404,39 @@ func (s *Store) UpdateNode(id string, patch NodePatch) (*Node, error) {
 	return current, nil
 }
 
-// mergeEditTx folds this edit into the previous journal entry when it is the
-// same actor editing the same node consecutively, and reports whether it did.
+// mergeEditTx folds this edit into the previous journal entry when it continues
+// the same action, and reports whether it did.
+//
+// Two cases merge, and both come from the same principle: undo should reverse
+// what the user thinks they did, not what the code happened to write.
+//
+//   - Consecutive edits to one node. Otherwise a typed title would need one
+//     Ctrl-Z per character.
+//   - An edit immediately after creating that node. Pressing `q` and typing a
+//     title is one act of authorship; splitting it meant the first Ctrl-Z left
+//     an untitled node sitting on the canvas, which reads as undo being broken
+//     rather than as the title being reverted.
+//
+// Anything else in between breaks the run, so editing a node from last week
+// never merges into its creation.
 func mergeEditTx(tx *sql.Tx, actor, nodeID string, after *Node) (bool, error) {
 	var id int64
 	var action UndoAction
-	var inverse string
+	var inverse, forward string
 	err := tx.QueryRow(
-		`SELECT id, action, inverse FROM undo_log
+		`SELECT id, action, inverse, forward FROM undo_log
 		 WHERE actor = ? AND undone = 0 ORDER BY id DESC LIMIT 1`, actor).
-		Scan(&id, &action, &inverse)
+		Scan(&id, &action, &inverse, &forward)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if action != ActionUpdateNode {
+	if action != ActionUpdateNode && action != ActionCreateNode {
 		return false, nil
 	}
+
 	var prev snapshot
 	if err := json.Unmarshal([]byte(inverse), &prev); err != nil {
 		return false, err
@@ -430,15 +444,30 @@ func mergeEditTx(tx *sql.Tx, actor, nodeID string, after *Node) (bool, error) {
 	if prev.Node == nil || prev.Node.ID != nodeID {
 		return false, nil
 	}
-	// Same node, same actor, most recent entry: update the forward state and
-	// the label, leaving the original "before" snapshot untouched.
-	forward, err := json.Marshal(snapshot{Node: after})
+
+	// The forward payload is what redo replays, so it has to carry the new
+	// title. For a create it also carries the placements and edges, which must
+	// survive — only the node record is being refreshed.
+	var fwd snapshot
+	if err := json.Unmarshal([]byte(forward), &fwd); err != nil {
+		return false, err
+	}
+	fwd.Node = after
+	encoded, err := json.Marshal(fwd)
 	if err != nil {
 		return false, err
 	}
+
+	// A merged create is still a create: undoing it must remove the node, and
+	// the label should say so.
+	label := "edited " + describeNode(after)
+	if action == ActionCreateNode {
+		label = "added " + describeNode(after)
+	}
+
 	_, err = tx.Exec(
 		`UPDATE undo_log SET forward = ?, label = ?, created_at = ? WHERE id = ?`,
-		string(forward), "edited "+describeNode(after), nowISO(), id)
+		string(encoded), label, nowISO(), id)
 	return err == nil, err
 }
 

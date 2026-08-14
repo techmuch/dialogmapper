@@ -16,11 +16,34 @@ import type {
 } from "./types";
 
 /**
- * A stable per-tab id. The server stamps it on broadcast events so this tab
- * can ignore echoes of its own writes and keep its optimistic state.
+ * A stable per-tab id.
+ *
+ * The server stamps it on broadcast events so this tab can ignore echoes of
+ * its own writes, and — more importantly — undo history is scoped to it.
+ *
+ * Kept in sessionStorage, which is per-tab and survives a reload. Generating a
+ * fresh id on every load silently emptied the undo history whenever the page
+ * refreshed, which defeated the point of keeping that history on the server.
+ * localStorage would be wrong in the other direction: two tabs would share one
+ * history, so undo in one would reverse work done in the other.
  */
-export const CLIENT_ID =
-  globalThis.crypto?.randomUUID?.() ?? `c${Math.random().toString(36).slice(2)}`;
+function stableClientID(): string {
+  const fresh = () =>
+    globalThis.crypto?.randomUUID?.() ?? `c${Math.random().toString(36).slice(2)}`;
+  try {
+    const existing = sessionStorage.getItem("dm:clientId");
+    if (existing) return existing;
+    const id = fresh();
+    sessionStorage.setItem("dm:clientId", id);
+    return id;
+  } catch {
+    // Private browsing or a blocked storage partition: fall back to a
+    // per-load id. Undo still works, it just does not survive a reload.
+    return fresh();
+  }
+}
+
+export const CLIENT_ID = stableClientID();
 
 /** Thrown for any non-2xx response, carrying the server's structured detail. */
 export class ApiError extends Error {

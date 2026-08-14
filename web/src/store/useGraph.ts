@@ -171,8 +171,12 @@ export const useGraph = create<GraphState>((set, get) => ({
     try {
       await api.updateNode(id, { title });
     } catch (err) {
-      set((s) => ({ nodes: { ...s.nodes, [id]: node } })); // roll back
-      get().toast(describe(err));
+      // Roll back only if the node is still here. Ctrl+Z while typing commits
+      // the field and undoes in the same breath; the commit then fails against
+      // a node the undo has already removed, and an unconditional rollback
+      // resurrected it on the canvas after the graph had been refetched.
+      set((s) => (s.nodes[id] ? { nodes: { ...s.nodes, [id]: node } } : s));
+      if (get().nodes[id]) get().toast(describe(err));
     }
   },
 
