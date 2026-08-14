@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Zap, GitFork, LayoutGrid, Smartphone, Bot, Database, CheckCircle, CornerDownRight } from 'lucide-react';
+import { ShieldCheck, Zap, GitFork, LayoutGrid, Smartphone, Bot, Database, CheckCircle, CornerDownRight, Undo2 } from 'lucide-react';
 
 export const FeatureWalkthroughs: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'grammar' | 'capture' | 'transclusion' | 'layout' | 'mobile' | 'ai' | 'sync'>('grammar');
@@ -162,17 +162,46 @@ export const FeatureWalkthroughs: React.FC = () => {
                   </div>
                   <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Tidy tree alignment</span>
                 </div>
+
+                <div style={{ background: 'var(--bg-dark)', padding: '0.875rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <kbd className="kbd">⌘Z</kbd> <span style={{ fontWeight: 600 }}>Undo</span>
+                  </div>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Your own actions only</span>
+                </div>
+
+                <div style={{ background: 'var(--bg-dark)', padding: '0.875rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <kbd className="kbd">/</kbd> <span style={{ fontWeight: 600 }}>Insert Existing</span>
+                  </div>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Search every map</span>
+                </div>
               </div>
             </div>
 
-            <div className="card" style={{ background: '#070b14', borderColor: 'var(--border-bright)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--accent-cyan)', fontWeight: 600, fontSize: '0.875rem' }}>
-                <Zap style={{ width: '1rem', height: '1rem' }} />
-                <span>Forgiving Shortcut Recovery</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="card" style={{ background: '#070b14', borderColor: 'var(--border-bright)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--accent-cyan)', fontWeight: 600, fontSize: '0.875rem' }}>
+                  <Zap style={{ width: '1rem', height: '1rem' }} />
+                  <span>Forgiving Shortcut Recovery</span>
+                </div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
+                  <code>+</code> and <code>-</code> are forgiving: with a Question selected, they attach to that Question's most recent Idea rather than failing, because a grammar error mid-sentence costs more than a sensible guess.
+                </p>
               </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
-                <code>+</code> and <code>-</code> are forgiving: with a Question selected, they attach to that Question's most recent Idea rather than failing, because a grammar error mid-sentence costs more than a sensible guess.
-              </p>
+
+              <div className="card" style={{ background: '#070b14', borderColor: 'var(--border-bright)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--accent-cyan)', fontWeight: 600, fontSize: '0.875rem' }}>
+                  <Undo2 style={{ width: '1rem', height: '1rem' }} />
+                  <span>Undo That Cannot Clobber a Teammate</span>
+                </div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6 }}>
+                  Undo history lives in SQLite, not the browser, so it survives a reload and works from the CLI too — <code>dialogmapper undo</code> can reverse an entire <code>seed</code> run. Each entry records who made the change, and <kbd className="kbd">⌘Z</kbd> only ever walks back your own: a note someone just sent from their phone is never silently deleted.
+                </p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9375rem', lineHeight: 1.6, marginTop: '0.75rem' }}>
+                  Deleting a shared node takes its edges and its placement on every map with it, so the journal stores the whole subgraph. Undo restores the argument, not just the box.
+                </p>
+              </div>
             </div>
           </div>
         )}

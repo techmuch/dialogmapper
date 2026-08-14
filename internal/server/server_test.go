@@ -603,6 +603,224 @@ func TestUploadFilenameCannotEscapeAssetsDir(t *testing.T) {
 	}
 }
 
+// --- undo ------------------------------------------------------------------
+
+// undoState reads the depth/labels endpoint for a given client.
+func (h *harness) undoState(client string) struct {
+	UndoDepth int              `json:"undoDepth"`
+	RedoDepth int              `json:"redoDepth"`
+	NextUndo  *store.UndoEntry `json:"nextUndo"`
+	NextRedo  *store.UndoEntry `json:"nextRedo"`
+} {
+	h.t.Helper()
+	var out struct {
+		UndoDepth int              `json:"undoDepth"`
+		RedoDepth int              `json:"redoDepth"`
+		NextUndo  *store.UndoEntry `json:"nextUndo"`
+		NextRedo  *store.UndoEntry `json:"nextRedo"`
+	}
+	res := h.do(http.MethodGet, "/api/undo?mapId="+h.mapID, nil,
+		map[string]string{"X-Client-Id": client})
+	defer res.Body.Close()
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		h.t.Fatal(err)
+	}
+	return out
+}
+
+func (h *harness) undoAs(client string, path string) struct {
+	Applied bool             `json:"applied"`
+	Entry   *store.UndoEntry `json:"entry"`
+	Reason  string           `json:"reason"`
+} {
+	h.t.Helper()
+	var out struct {
+		Applied bool             `json:"applied"`
+		Entry   *store.UndoEntry `json:"entry"`
+		Reason  string           `json:"reason"`
+	}
+	res := h.do(http.MethodPost, path+"?mapId="+h.mapID, nil,
+		map[string]string{"X-Client-Id": client})
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		h.t.Fatalf("%s = %d: %s", path, res.StatusCode, b)
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		h.t.Fatal(err)
+	}
+	return out
+}
+
+func (h *harness) graphSize() (nodes, edges int) {
+	h.t.Helper()
+	var g struct {
+		Nodes []map[string]any `json:"nodes"`
+		Edges []map[string]any `json:"edges"`
+	}
+	h.json(http.MethodGet, "/api/maps/"+h.mapID+"/graph", nil, &g)
+	return len(g.Nodes), len(g.Edges)
+}
+
+func TestUndoOverHTTP(t *testing.T) {
+	h := newHarness(t)
+
+	if st := h.undoState("tab-a"); st.UndoDepth != 0 || st.NextUndo != nil {
+		t.Errorf("fresh client should have nothing to undo, got %+v", st)
+	}
+
+	h.do(http.MethodPost, "/api/nodes", map[string]any{
+		"type": "question", "title": "Ship on Fridays?", "mapId": h.mapID,
+	}, map[string]string{"X-Client-Id": "tab-a"}).Body.Close()
+
+	st := h.undoState("tab-a")
+	if st.UndoDepth != 1 {
+		t.Fatalf("undo depth = %d, want 1", st.UndoDepth)
+	}
+	// The label drives the toolbar tooltip and the toast, so it has to name
+	// the thing that would disappear.
+	if st.NextUndo == nil || !strings.Contains(st.NextUndo.Label, "Ship on Fridays?") {
+		t.Errorf("nextUndo = %+v, should name the node", st.NextUndo)
+	}
+
+	res := h.undoAs("tab-a", "/api/undo")
+	if !res.Applied {
+		t.Fatalf("undo not applied: %s", res.Reason)
+	}
+	if n, _ := h.graphSize(); n != 0 {
+		t.Errorf("node still present after undo (%d)", n)
+	}
+
+	if res := h.undoAs("tab-a", "/api/redo"); !res.Applied {
+		t.Fatalf("redo not applied: %s", res.Reason)
+	}
+	if n, _ := h.graphSize(); n != 1 {
+		t.Error("redo did not restore the node")
+	}
+}
+
+// TestUndoIsPerClientOverHTTP is the collaboration guarantee at the transport
+// level: the client id on the request, not global recency, decides what gets
+// reversed.
+func TestUndoIsPerClientOverHTTP(t *testing.T) {
+	h := newHarness(t)
+
+	h.do(http.MethodPost, "/api/nodes", map[string]any{
+		"type": "question", "title": "From the canvas", "mapId": h.mapID,
+	}, map[string]string{"X-Client-Id": "desktop"}).Body.Close()
+
+	h.do(http.MethodPost, "/api/nodes", map[string]any{
+		"type": "note", "title": "From a phone", "mapId": h.mapID,
+	}, map[string]string{"X-Client-Id": "phone"}).Body.Close()
+
+	res := h.undoAs("desktop", "/api/undo")
+	if !res.Applied || res.Entry == nil {
+		t.Fatal("desktop undo did not apply")
+	}
+	if !strings.Contains(res.Entry.Label, "From the canvas") {
+		t.Fatalf("desktop undo reversed %q — the phone's contribution was at risk",
+			res.Entry.Label)
+	}
+
+	// The phone's node survives, and the phone still has its own history.
+	var g struct {
+		Nodes []struct {
+			Title string `json:"title"`
+		} `json:"nodes"`
+	}
+	h.json(http.MethodGet, "/api/maps/"+h.mapID+"/graph", nil, &g)
+	if len(g.Nodes) != 1 || g.Nodes[0].Title != "From a phone" {
+		t.Errorf("graph after desktop undo = %+v", g.Nodes)
+	}
+	if st := h.undoState("phone"); st.UndoDepth != 1 {
+		t.Errorf("phone undo depth = %d, want 1", st.UndoDepth)
+	}
+}
+
+func TestUndoExhaustionIsNotAnError(t *testing.T) {
+	h := newHarness(t)
+	// Pressing Ctrl+Z once too often is normal use, not a failure, and must
+	// not produce a red error toast.
+	res := h.undoAs("tab-a", "/api/undo")
+	if res.Applied {
+		t.Error("undo applied with an empty history")
+	}
+	if res.Reason == "" {
+		t.Error("response should explain that there is nothing to undo")
+	}
+}
+
+func TestUndoBroadcastsToOtherClients(t *testing.T) {
+	h := newHarness(t)
+	conn := dialWS(t, h, "observer")
+
+	h.do(http.MethodPost, "/api/nodes", map[string]any{
+		"type": "question", "title": "Doomed", "mapId": h.mapID,
+	}, map[string]string{"X-Client-Id": "tab-a"}).Body.Close()
+	conn.await(t, "node.created", 2*time.Second)
+
+	h.undoAs("tab-a", "/api/undo")
+
+	// Other clients refetch rather than patching: an undo can restore a node,
+	// its placements on several maps and every edge that pointed at it.
+	ev := conn.await(t, "graph.invalidated", 2*time.Second)
+	payload, ok := ev.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %#v", ev.Payload)
+	}
+	if reason, _ := payload["reason"].(string); !strings.Contains(reason, "Doomed") {
+		t.Errorf("broadcast reason = %q, should name what was undone", reason)
+	}
+}
+
+// TestUndoDeleteThroughAPIRestoresTheWholeSubgraph exercises the case most
+// likely to lose work: deleting a node that other nodes argue with.
+func TestUndoDeleteThroughAPIRestoresTheWholeSubgraph(t *testing.T) {
+	h := newHarness(t)
+	client := map[string]string{"X-Client-Id": "tab-a"}
+
+	mk := func(typ, title, parent string) string {
+		body := map[string]any{"type": typ, "title": title, "mapId": h.mapID}
+		if parent != "" {
+			body["parentId"] = parent
+		}
+		var out struct {
+			Node map[string]any `json:"node"`
+		}
+		res := h.do(http.MethodPost, "/api/nodes", body, client)
+		json.NewDecoder(res.Body).Decode(&out)
+		res.Body.Close()
+		return out.Node["id"].(string)
+	}
+
+	q := mk("question", "Q", "")
+	idea := mk("idea", "I", q)
+	mk("pro", "P", idea)
+	mk("con", "C", idea)
+
+	if n, e := h.graphSize(); n != 4 || e != 3 {
+		t.Fatalf("setup: %d nodes, %d edges", n, e)
+	}
+
+	// Delete the Idea everywhere: this takes three edges with it.
+	res := h.do(http.MethodDelete, "/api/nodes/"+idea+"?everywhere=true", nil, client)
+	res.Body.Close()
+	if n, e := h.graphSize(); n != 3 || e != 0 {
+		t.Fatalf("after delete: %d nodes, %d edges", n, e)
+	}
+
+	if r := h.undoAs("tab-a", "/api/undo"); !r.Applied {
+		t.Fatal("undo not applied")
+	}
+	n, e := h.graphSize()
+	if n != 4 {
+		t.Errorf("nodes after undo = %d, want 4", n)
+	}
+	if e != 3 {
+		t.Errorf("edges after undo = %d, want 3 — the argument structure was lost", e)
+	}
+}
+
 // --- websocket ------------------------------------------------------------
 
 // wsClient wraps a connection with a background reader.

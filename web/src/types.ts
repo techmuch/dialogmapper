@@ -131,6 +131,32 @@ export interface ServerEvent {
   payload?: any;
 }
 
+/** One reversible action from the server's undo journal. */
+export interface UndoEntry {
+  id: number;
+  mapId: string;
+  actor: string;
+  action: string;
+  /** Human phrasing, e.g. `added Pro "Fewer weekend pages"`. */
+  label: string;
+}
+
+export interface UndoResult {
+  applied: boolean;
+  /** Present when nothing was left to undo — not an error, just the end. */
+  reason?: string;
+  entry?: UndoEntry;
+  undoDepth?: number;
+  redoDepth?: number;
+}
+
+export interface UndoState {
+  undoDepth: number;
+  redoDepth: number;
+  nextUndo: UndoEntry | null;
+  nextRedo: UndoEntry | null;
+}
+
 /** The structured 422 the server returns when an edge breaks IBIS rules. */
 export interface IbisViolation {
   error: string;

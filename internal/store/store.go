@@ -25,7 +25,8 @@ var schemaSQL string
 // SchemaVersion is bumped whenever schema.sql changes in a way that requires
 // migration. Stored in schema_meta so an old binary refuses a newer database
 // rather than corrupting it.
-const SchemaVersion = 1
+// v2 added the undo_log journal.
+const SchemaVersion = 2
 
 // DBFileName is the conventional database filename inside a project.
 const DBFileName = "maps.db"
@@ -40,8 +41,31 @@ type Store struct {
 
 	// writeMu serializes writes. SQLite in WAL mode allows one writer; taking
 	// the lock in Go turns "database is locked" retries into ordinary waiting.
-	writeMu sync.Mutex
+	//
+	// A pointer so that As() can hand out actor-scoped views that still share
+	// one lock; copying a sync.Mutex by value would give each view its own and
+	// quietly remove the serialization.
+	writeMu *sync.Mutex
+
+	// actor attributes journal entries, so undo can be scoped per client
+	// rather than letting one person reverse another's work.
+	actor string
 }
+
+// As returns a view of the store that records undo entries under the given
+// actor. The underlying database and write lock are shared.
+//
+// This exists as a view rather than an extra argument on every mutation so
+// that call sites read as `st.As(clientID).CreateNode(in)` — the attribution
+// is stated once, at the boundary where the client is actually known.
+func (s *Store) As(actor string) *Store {
+	view := *s
+	view.actor = actor
+	return &view
+}
+
+// Actor reports who this view attributes changes to.
+func (s *Store) Actor() string { return s.actor }
 
 // Open connects to the database at root/maps.db, creating and migrating it if
 // necessary.
@@ -72,7 +96,7 @@ func Open(root string) (*Store, error) {
 		return nil, fmt.Errorf("connect %s: %w", path, err)
 	}
 
-	s := &Store{db: db, root: abs}
+	s := &Store{db: db, root: abs, writeMu: &sync.Mutex{}}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err

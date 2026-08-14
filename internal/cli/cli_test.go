@@ -251,6 +251,87 @@ func TestSeedFromStdin(t *testing.T) {
 	}
 }
 
+// TestUndoReversesASeedRun is the reason `dialogmapper undo` exists: a seed
+// that produced the wrong structure would otherwise have to be unpicked node
+// by node, or the project started over.
+func TestUndoReversesASeedRun(t *testing.T) {
+	dir := t.TempDir()
+	run(t, dir, newInitCmd())
+
+	doc := filepath.Join(dir, "notes.md")
+	if err := os.WriteFile(doc, []byte("# Topic\n\n- An idea\n+ a pro\n! a con\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedOut := run(t, dir, newSeedCmd(), "--context", doc, "--map", "Seeded")
+	// The command must say how to reverse itself; otherwise the user has to
+	// guess the step count.
+	if !strings.Contains(seedOut, "dialogmapper undo --steps 4") {
+		t.Errorf("seed should print the exact undo command:\n%s", seedOut)
+	}
+
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps, _ := st.ListMaps()
+	var seeded string
+	for _, m := range maps {
+		if m.Name == "Seeded" {
+			seeded = m.ID
+		}
+	}
+	if seeded == "" {
+		t.Fatal("seeded map not found")
+	}
+	before, _ := st.Graph(seeded)
+	st.Close()
+	if len(before.Nodes) != 4 {
+		t.Fatalf("expected 4 seeded nodes, got %d", len(before.Nodes))
+	}
+
+	preview := run(t, dir, newUndoCmd(), "--dry-run")
+	if !strings.Contains(preview, "Would undo:") {
+		t.Errorf("dry run output:\n%s", preview)
+	}
+
+	out := run(t, dir, newUndoCmd(), "--steps", "4")
+	if strings.Count(out, "Undone:") != 4 {
+		t.Errorf("expected four undo lines:\n%s", out)
+	}
+
+	st2, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st2.Close()
+	after, _ := st2.Graph(seeded)
+	if len(after.Nodes) != 0 {
+		t.Errorf("seed not fully reversed: %d nodes left", len(after.Nodes))
+	}
+
+	// And forwards again.
+	redone := run(t, dir, newRedoCmd(), "--steps", "4")
+	if strings.Count(redone, "Redone:") != 4 {
+		t.Errorf("expected four redo lines:\n%s", redone)
+	}
+	st3, _ := store.Open(dir)
+	defer st3.Close()
+	back, _ := st3.Graph(seeded)
+	if len(back.Nodes) != 4 || len(back.Edges) != 3 {
+		t.Errorf("redo restored %d nodes / %d edges, want 4/3",
+			len(back.Nodes), len(back.Edges))
+	}
+}
+
+func TestUndoWithEmptyHistorySaysSo(t *testing.T) {
+	dir := t.TempDir()
+	run(t, dir, newInitCmd())
+	out := run(t, dir, newUndoCmd())
+	if !strings.Contains(out, "Nothing to undo") {
+		t.Errorf("output = %q", out)
+	}
+}
+
 func TestGrammarCommandEmitsValidJSON(t *testing.T) {
 	dir := t.TempDir()
 	out := run(t, dir, newGrammarCmd(), "--json")

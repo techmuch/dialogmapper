@@ -39,6 +39,8 @@ copied, so the same idea can appear in several maps at once and stay in sync.`,
 		newSeedCmd(),
 		newExportCmd(),
 		newGrammarCmd(),
+		newUndoCmd(),
+		newRedoCmd(),
 	)
 	return root.Execute()
 }

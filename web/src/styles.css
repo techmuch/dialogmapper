@@ -98,6 +98,10 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .pill:hover { background: #232b36; color: var(--fg); }
 .pill.is-on { background: var(--accent); border-color: var(--accent); color: #0b0f14; font-weight: 600; }
 .pill--clear { color: var(--con); }
+.pill:disabled { opacity: .35; cursor: default; }
+.pill:disabled:hover { background: var(--bg-3); color: var(--fg-dim); }
+.pill--icon { padding: 4px 10px; font-size: 15px; line-height: 1; }
+.toolbar__undo { display: inline-flex; gap: 2px; margin-right: 4px; }
 
 .toolbar__types { display: flex; gap: 2px; margin-left: 4px; }
 .type-toggle {

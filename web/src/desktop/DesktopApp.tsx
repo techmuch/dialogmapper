@@ -79,6 +79,8 @@ const SHORTCUTS: [string, string][] = [
   ["+", "New Pro supporting the selected Idea"],
   ["−", "New Con objecting to the selected Idea"],
   ["Enter", "Edit the title; Enter again commits and keeps the node selected"],
+  ["Ctrl/⌘ Z", "Undo your last action — only ever your own, never a teammate's"],
+  ["Ctrl/⌘ ⇧ Z", "Redo"],
   ["Esc", "Cancel editing, then close panels, then clear the selection"],
   ["← ↑ → ↓", "Move the selection to the nearest node in that direction"],
   ["Space", "Centre on the selection, or fit the whole map"],

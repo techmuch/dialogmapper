@@ -27,6 +27,26 @@ export function useKeyboard({ flow, visibleNodes }: Options) {
       const g = useGraph.getState();
       const ui = useUI.getState();
 
+      // Undo is checked before the typing guard deliberately. Ctrl+Z inside a
+      // node's title field would otherwise hit the browser's own text undo,
+      // which knows nothing about the graph and leaves the user thinking undo
+      // is broken. Committing the field first keeps the two models in step.
+      const mod = ev.metaKey || ev.ctrlKey;
+      if (mod && (ev.key === "z" || ev.key === "Z")) {
+        ev.preventDefault();
+        if (isTyping(ev.target)) (ev.target as HTMLElement).blur();
+        if (ev.shiftKey) void g.redo();
+        else void g.undo();
+        return;
+      }
+      if (mod && (ev.key === "y" || ev.key === "Y")) {
+        // Ctrl+Y is the Windows convention for redo.
+        ev.preventDefault();
+        if (isTyping(ev.target)) (ev.target as HTMLElement).blur();
+        void g.redo();
+        return;
+      }
+
       // While typing, the only global keys are Escape and Enter, and the
       // node's own input handles those. Everything else belongs to the text.
       if (isTyping(ev.target)) return;

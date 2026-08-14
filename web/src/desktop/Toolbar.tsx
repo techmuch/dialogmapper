@@ -24,6 +24,12 @@ export function Toolbar() {
   const connected = useGraph((s) => s.connected);
   const nodeCount = useGraph((s) => Object.keys(s.nodes).length);
   const runAutoLayout = useGraph((s) => s.runAutoLayout);
+  const undo = useGraph((s) => s.undo);
+  const redo = useGraph((s) => s.redo);
+  const undoDepth = useGraph((s) => s.undoDepth);
+  const redoDepth = useGraph((s) => s.redoDepth);
+  const nextUndoLabel = useGraph((s) => s.nextUndoLabel);
+  const nextRedoLabel = useGraph((s) => s.nextRedoLabel);
 
   const ui = useUI();
   const [creating, setCreating] = useState(false);
@@ -100,6 +106,33 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar__right">
+        <span className="toolbar__undo">
+          <button
+            className="pill pill--icon"
+            disabled={undoDepth === 0}
+            onClick={() => void undo()}
+            title={
+              nextUndoLabel
+                ? `Undo: ${nextUndoLabel}  (${modKey()}Z)`
+                : "Nothing to undo"
+            }
+          >
+            ↶
+          </button>
+          <button
+            className="pill pill--icon"
+            disabled={redoDepth === 0}
+            onClick={() => void redo()}
+            title={
+              nextRedoLabel
+                ? `Redo: ${nextRedoLabel}  (${modKey()}⇧Z)`
+                : "Nothing to redo"
+            }
+          >
+            ↷
+          </button>
+        </span>
+
         <button
           className={`pill ${ui.layoutMode === "auto" ? "is-on" : ""}`}
           title={
@@ -143,6 +176,11 @@ export function Toolbar() {
       </div>
     </header>
   );
+}
+
+/** Shows ⌘ on Apple platforms and Ctrl elsewhere, so the tooltip is truthful. */
+function modKey(): string {
+  return /Mac|iPhone|iPad/.test(navigator.platform ?? "") ? "⌘" : "Ctrl+";
 }
 
 function NewMapField({ onCancel, onDone }: { onCancel: () => void; onDone: () => void }) {

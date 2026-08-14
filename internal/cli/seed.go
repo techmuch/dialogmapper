@@ -97,6 +97,10 @@ Trailing #hashtags become node tags. Use --dry-run to see the plan first.`,
 				return err
 			}
 
+			// Attribute the whole run to the CLI actor so `dialogmapper undo`
+			// can walk it back without touching anyone's canvas history.
+			writer := st.As(store.CLIActor)
+
 			ids := make([]string, len(plan))
 			var created, skipped int
 			for i, p := range plan {
@@ -115,7 +119,7 @@ Trailing #hashtags become node tags. Use --dry-run to see the plan first.`,
 					in.ParentID = ids[p.parent]
 					in.Relationship = p.rel
 				}
-				node, _, err := st.CreateNode(in)
+				node, _, err := writer.CreateNode(in)
 				if err != nil {
 					// One malformed line should not abandon the whole import.
 					fmt.Fprintf(cmd.ErrOrStderr(), "  skipped %q: %v\n", p.title, err)
@@ -131,6 +135,11 @@ Trailing #hashtags become node tags. Use --dry-run to see the plan first.`,
 				fmt.Fprintf(out, ", %d skipped", skipped)
 			}
 			fmt.Fprintf(out, ".\n\nOpen it with: dialogmapper start --open\n")
+			if created > 0 {
+				// A seed that produced the wrong shape is the main reason
+				// anyone wants undo on the CLI, so say exactly how to get out.
+				fmt.Fprintf(out, "Undo this run with: dialogmapper undo --steps %d\n", created)
+			}
 			return nil
 		},
 	}

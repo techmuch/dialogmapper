@@ -63,11 +63,39 @@ needs a mouse correction afterwards.
 | `Space` | Centre on the selection, or fit the whole map |
 | `l` | Tidy up with auto-layout |
 | `/` | Search every map and insert an existing node |
+| `Ctrl/⌘ Z` | Undo — your own actions only |
+| `Ctrl/⌘ ⇧ Z` | Redo |
 | `Tab` | Toggle the details panel |
 
 `+` and `-` are forgiving: with a Question selected they attach to that
 Question's most recent Idea rather than failing, because a grammar error
 mid-sentence costs more than a sensible guess.
+
+## Undo
+
+Undo history lives in SQLite, not the browser. It survives a reload, it sees
+changes made from a phone, and it works from the terminal:
+
+```
+dialogmapper undo --dry-run     # what would go first
+dialogmapper undo --steps 12    # reverse a whole seed run
+```
+
+Two properties worth knowing:
+
+**It is scoped per client.** Each journal entry records who made the change, so
+`Ctrl+Z` on the canvas walks back your own actions and never silently deletes a
+note somebody just sent from their phone. `dialogmapper undo` has its own
+history again, separate from any browser.
+
+**It restores the whole subgraph.** Deleting a shared node takes its edges and
+its placement on every map with it. The journal stores all of that, so undo
+brings back the argument rather than a bare box with nothing attached.
+
+Consecutive edits to the same node collapse into one entry, so undoing a typed
+title takes one keystroke rather than one per character. Making a new change
+after undoing discards the redo tail, which is the standard rule — replaying a
+redo against a world that has moved on is how undo systems corrupt state.
 
 ## Transclusion
 

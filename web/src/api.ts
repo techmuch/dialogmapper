@@ -10,6 +10,8 @@ import type {
   NodeType,
   Relationship,
   Status,
+  UndoResult,
+  UndoState,
 } from "./types";
 
 /**
@@ -49,6 +51,20 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Called after any successful non-GET request.
+ *
+ * Undo depth changes on every write, and the toolbar needs to know so it can
+ * enable its buttons and name what Ctrl+Z would reverse. Hooking it here means
+ * one interception point instead of a refresh call bolted onto every mutation
+ * in the store — the kind of thing that gets forgotten on the next one added.
+ */
+let mutationListener: (() => void) | null = null;
+
+export function onMutation(fn: () => void) {
+  mutationListener = fn;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -61,11 +77,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
 
-  if (res.status === 204) return undefined as T;
+  const method = (init?.method ?? "GET").toUpperCase();
+
+  if (res.status === 204) {
+    if (method !== "GET") mutationListener?.();
+    return undefined as T;
+  }
 
   const text = await res.text();
   const body = text ? JSON.parse(text) : null;
   if (!res.ok) throw new ApiError(res.status, body ?? { error: res.statusText });
+  if (method !== "GET") mutationListener?.();
   return body as T;
 }
 
@@ -178,6 +200,20 @@ export const api = {
     if (mapId) p.set("mapId", mapId);
     return request<{ nodes: DMNode[] }>(`/api/feed?${p}`).then((r) => r.nodes);
   },
+
+  /**
+   * Undo is server-side and scoped to this client, so pressing Ctrl+Z only
+   * ever walks back your own actions — never a node someone just added from
+   * their phone.
+   */
+  undo: (mapId?: string) =>
+    request<UndoResult>(`/api/undo${mapId ? `?mapId=${mapId}` : ""}`, { method: "POST" }),
+  redo: (mapId?: string) =>
+    request<UndoResult>(`/api/redo${mapId ? `?mapId=${mapId}` : ""}`, { method: "POST" }),
+
+  /** Depth and labels, for enabling and titling the toolbar buttons. */
+  undoState: (mapId?: string) =>
+    request<UndoState>(`/api/undo${mapId ? `?mapId=${mapId}` : ""}`),
 
   uploadAsset: async (file: File, nodeId?: string) => {
     const fd = new FormData();

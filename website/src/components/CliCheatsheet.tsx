@@ -28,9 +28,21 @@ const commands: CliCmd[] = [
   },
   {
     name: 'export',
-    args: '--format <md|json> [--map <id>]',
+    args: '--format <md|json> [--map-id <id>] [--all]',
     description: 'Dumps the entire IBIS decision graph or a specific map into Markdown or structured JSON for LLM prompts and downstream tools.',
     example: 'dialogmapper export --format md > map_summary.md'
+  },
+  {
+    name: 'undo',
+    args: '[--steps <n>] [--dry-run]',
+    description: 'Reverses changes made from the command line — most usefully an entire seed run. Scoped to the CLI\'s own history, so it never touches what someone is doing in the browser.',
+    example: 'dialogmapper undo --steps 12'
+  },
+  {
+    name: 'redo',
+    args: '[--steps <n>]',
+    description: 'Reapplies the last change undone from the command line.',
+    example: 'dialogmapper redo'
   },
   {
     name: 'grammar',

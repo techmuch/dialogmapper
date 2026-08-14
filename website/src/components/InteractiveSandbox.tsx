@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HelpCircle, Lightbulb, ThumbsUp, ThumbsDown, FileText, AlertTriangle, RefreshCw } from 'lucide-react';
+import { HelpCircle, Lightbulb, ThumbsUp, ThumbsDown, FileText, AlertTriangle, RefreshCw, Undo2 } from 'lucide-react';
 
 interface Node {
   id: string;
@@ -19,13 +19,37 @@ const initialNodes: Node[] = [
   { id: 'n7', type: 'note', title: 'Shared memory hooks require platform-dependent OS primitives', parentId: 'n6', transcluded: true },
 ];
 
+/** One reversible step, mirroring the server's undo journal entries. */
+interface HistoryEntry {
+  nodes: Node[];
+  selectedId: string;
+  label: string;
+}
+
 export const InteractiveSandbox: React.FC = () => {
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [selectedId, setSelectedId] = useState<string>('n2');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   const selectedNode = nodes.find(n => n.id === selectedId);
+
+  // The real app journals inverse operations in SQLite; this demo keeps
+  // snapshots, which is enough to show the behaviour that matters here — that
+  // undo names what it reversed rather than silently removing something.
+  const undo = () => {
+    setErrorMessage(null);
+    setHistory(h => {
+      if (h.length === 0) return h;
+      const last = h[h.length - 1];
+      setNodes(last.nodes);
+      setSelectedId(last.selectedId);
+      setActiveAction(`Undone: ${last.label}`);
+      setTimeout(() => setActiveAction(null), 2000);
+      return h.slice(0, -1);
+    });
+  };
 
   const addNode = (type: 'question' | 'idea' | 'pro' | 'con' | 'note', titleText?: string) => {
     setErrorMessage(null);
@@ -65,6 +89,11 @@ export const InteractiveSandbox: React.FC = () => {
       parentId
     };
 
+    setHistory(h => [...h, {
+      nodes,
+      selectedId,
+      label: `added ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+    }]);
     setNodes([...nodes, newNode]);
     setSelectedId(newId);
     setActiveAction(`Added ${type.toUpperCase()}`);
@@ -81,6 +110,7 @@ export const InteractiveSandbox: React.FC = () => {
     setNodes(initialNodes);
     setSelectedId('n2');
     setErrorMessage(null);
+    setHistory([]);
   };
 
   const getNodeIcon = (type: string) => {
@@ -144,6 +174,25 @@ export const InteractiveSandbox: React.FC = () => {
               </button>
               <button onClick={() => addNode('note')} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.8125rem' }}>
                 <kbd className="kbd">n</kbd> Note
+              </button>
+              <button
+                onClick={undo}
+                disabled={history.length === 0}
+                className="btn-secondary"
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.8125rem',
+                  opacity: history.length === 0 ? 0.4 : 1,
+                  cursor: history.length === 0 ? 'default' : 'pointer',
+                }}
+                title={
+                  history.length
+                    ? `Undo: ${history[history.length - 1].label}`
+                    : 'Nothing to undo'
+                }
+              >
+                <Undo2 style={{ width: '0.9rem', height: '0.9rem' }} />
+                <kbd className="kbd">⌘Z</kbd> Undo
               </button>
             </div>
 

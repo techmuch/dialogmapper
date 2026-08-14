@@ -96,6 +96,38 @@ CREATE TABLE IF NOT EXISTS assets (
     created_at TEXT NOT NULL
 );
 
+-- The undo journal.
+--
+-- Each row is one reversible action, storing everything needed to put the
+-- world back. Undo is *not* implemented by replaying history forwards from a
+-- snapshot: that would be O(history) and would undo other people's work.
+-- Instead each entry carries an explicit inverse payload.
+--
+-- actor scopes undo per client, so pressing Ctrl-Z on the canvas walks back
+-- your own actions and never silently deletes what somebody just added from
+-- their phone.
+--
+-- undone flips as entries are undone and redone, so redo is just the same
+-- journal read in the other direction rather than a second stack that can
+-- disagree with the first.
+CREATE TABLE IF NOT EXISTS undo_log (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    map_id TEXT REFERENCES maps (id) ON DELETE CASCADE,
+    -- Opaque client identifier: a browser tab, or "cli" for command-line runs.
+    actor TEXT NOT NULL DEFAULT '',
+    -- What happened, for the "Undone: added Pro" toast.
+    action TEXT NOT NULL,
+    label  TEXT NOT NULL DEFAULT '',
+    -- JSON describing how to reverse the action, and how to reapply it.
+    inverse TEXT NOT NULL CHECK (json_valid (inverse)),
+    forward TEXT NOT NULL DEFAULT '{}' CHECK (json_valid (forward)),
+    undone     INTEGER NOT NULL DEFAULT 0 CHECK (undone IN (0, 1)),
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_undo_cursor
+    ON undo_log (actor, map_id, undone, id DESC);
+
 -- One logical edge per (map, source, target, relationship).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_edges_unique
     ON edges (map_id, source_node_id, target_node_id, relationship_type);

@@ -91,6 +91,8 @@ func (s *Server) routes() {
 	api("search", s.handleSearch)
 	api("feed", s.handleFeed)
 	api("assets", s.handleAssetUpload)
+	api("undo", s.handleUndo)
+	api("redo", s.handleRedo)
 
 	s.mux.Handle("/ws", http.HandlerFunc(s.handleWS))
 

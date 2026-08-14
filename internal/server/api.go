@@ -94,6 +94,25 @@ func pathTail(r *http.Request, resource string) []string {
 
 func clientID(r *http.Request) string { return r.Header.Get("X-Client-Id") }
 
+// actorStore returns a store view that attributes undo entries to the calling
+// client. Undo is per-actor, so this is what stops one person's Ctrl-Z from
+// reversing what somebody else just contributed from a phone.
+//
+// Reads deliberately go through s.st directly: there is nothing to attribute,
+// and routing them here would only invite the mistake of attributing a read.
+func (s *Server) actorStore(r *http.Request) *store.Store {
+	return s.st.As(actorFor(r))
+}
+
+func actorFor(r *http.Request) string {
+	if id := clientID(r); id != "" {
+		return id
+	}
+	// A client that sends no id still gets a coherent history of its own,
+	// rather than sharing one journal with every other anonymous caller.
+	return "anonymous"
+}
+
 // publish fans a change out to every client and advances the external-change
 // baseline so the data_version poller does not also fire a blanket refresh.
 func (s *Server) publish(r *http.Request, e Event) {
@@ -132,7 +151,7 @@ func (s *Server) handleMaps(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
-		m, err := s.st.CreateMap(in.Name, in.Description)
+		m, err := s.actorStore(r).CreateMap(in.Name, in.Description)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -183,7 +202,7 @@ func (s *Server) handleMapByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
-		if err := s.st.RenameMap(id, in.Name, in.Description); err != nil {
+		if err := s.actorStore(r).RenameMap(id, in.Name, in.Description); err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -196,7 +215,7 @@ func (s *Server) handleMapByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, m)
 
 	case http.MethodDelete:
-		if err := s.st.DeleteMap(id); err != nil {
+		if err := s.actorStore(r).DeleteMap(id); err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -218,7 +237,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	node, edge, err := s.st.CreateNode(in)
+	node, edge, err := s.actorStore(r).CreateNode(in)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -256,7 +275,7 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
-		if err := s.st.SetPlacement(in.MapID, id, in.X, in.Y, in.Collapsed, in.GroupID); err != nil {
+		if err := s.actorStore(r).SetPlacement(in.MapID, id, in.X, in.Y, in.Collapsed, in.GroupID); err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -284,7 +303,7 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
-		if err := s.st.Transclude(in.MapID, id, in.X, in.Y); err != nil {
+		if err := s.actorStore(r).Transclude(in.MapID, id, in.X, in.Y); err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -313,7 +332,7 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
-		node, err := s.st.UpdateNode(id, patch)
+		node, err := s.actorStore(r).UpdateNode(id, patch)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -327,7 +346,7 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 		// Removing from one map is not the same as deleting a shared node,
 		// and the client must say which it means.
 		if mapID != "" && r.URL.Query().Get("everywhere") != "true" {
-			if err := s.st.RemoveFromMap(mapID, id); err != nil {
+			if err := s.actorStore(r).RemoveFromMap(mapID, id); err != nil {
 				writeErr(w, err)
 				return
 			}
@@ -336,7 +355,7 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNoContent, nil)
 			return
 		}
-		if err := s.st.DeleteNode(id); err != nil {
+		if err := s.actorStore(r).DeleteNode(id); err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -363,7 +382,7 @@ func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	e, err := s.st.CreateEdge(in.MapID, in.SourceNodeID, in.TargetNodeID, in.Relationship)
+	e, err := s.actorStore(r).CreateEdge(in.MapID, in.SourceNodeID, in.TargetNodeID, in.Relationship)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -382,7 +401,7 @@ func (s *Server) handleEdgeByID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errMethod)
 		return
 	}
-	if err := s.st.DeleteEdge(parts[0]); err != nil {
+	if err := s.actorStore(r).DeleteEdge(parts[0]); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -408,7 +427,7 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
-		saved, err := s.st.UpsertGroup(g)
+		saved, err := s.actorStore(r).UpsertGroup(g)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -427,7 +446,7 @@ func (s *Server) handleGroupByID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errMethod)
 		return
 	}
-	if err := s.st.DeleteGroup(parts[0]); err != nil {
+	if err := s.actorStore(r).DeleteGroup(parts[0]); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -454,6 +473,90 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"nodes": nodes})
+}
+
+// handleUndo reverses the calling client's most recent action.
+//
+// The response says what was undone so the UI can name it. "Undone" on its own
+// is close to useless — the user needs to know whether the thing that
+// disappeared is the thing they meant to reverse.
+func (s *Server) handleUndo(w http.ResponseWriter, r *http.Request) {
+	s.undoStep(w, r, false)
+}
+
+// handleRedo reapplies the most recently undone action.
+func (s *Server) handleRedo(w http.ResponseWriter, r *http.Request) {
+	s.undoStep(w, r, true)
+}
+
+func (s *Server) undoStep(w http.ResponseWriter, r *http.Request, redo bool) {
+	// GET reports what is available without changing anything, so the toolbar
+	// can label and disable its buttons.
+	actor := actorFor(r)
+	mapID := r.URL.Query().Get("mapId")
+
+	if r.Method == http.MethodGet {
+		undo, redoDepth, err := s.st.UndoDepth(actor, mapID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		next, err := s.st.PeekUndo(actor, mapID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		nextRedo, err := s.st.PeekRedo(actor, mapID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"undoDepth": undo, "redoDepth": redoDepth,
+			"nextUndo": next, "nextRedo": nextRedo,
+		})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeErr(w, errMethod)
+		return
+	}
+
+	var entry *store.UndoEntry
+	var err error
+	if redo {
+		entry, err = s.st.As(actor).Redo(actor, mapID)
+	} else {
+		entry, err = s.st.As(actor).Undo(actor, mapID)
+	}
+	if errors.Is(err, store.ErrNothingToUndo) || errors.Is(err, store.ErrNothingToRedo) {
+		// Not an error worth a red toast: the user pressed Ctrl-Z once too
+		// often, which is normal.
+		writeJSON(w, http.StatusOK, map[string]any{"applied": false, "reason": err.Error()})
+		return
+	}
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	// An undo can touch nodes, edges and placements across more than one map,
+	// so clients refetch rather than trying to patch their local graph from a
+	// diff. Correctness beats the round trip here.
+	s.publish(r, Event{
+		Type: "graph.invalidated", MapID: entry.MapID,
+		Payload: map[string]any{
+			"reason": entry.Label,
+			"undo":   !redo,
+			"entry":  entry,
+		},
+	})
+
+	undoDepth, redoDepth, _ := s.st.UndoDepth(actor, mapID)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"applied": true, "entry": entry,
+		"undoDepth": undoDepth, "redoDepth": redoDepth,
+	})
 }
 
 // handleFeed is the mobile linear view: recent activity, newest first.

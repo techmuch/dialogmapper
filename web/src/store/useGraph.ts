@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { ApiError, CLIENT_ID, api } from "../api";
+import { ApiError, CLIENT_ID, api, onMutation } from "../api";
 import { autoLayout } from "../layout/autoLayout";
 import type {
   DMEdge,
@@ -38,6 +38,13 @@ interface GraphState {
   connected: boolean;
   toasts: Toast[];
 
+  /** How many of this client's own actions can be reversed. */
+  undoDepth: number;
+  redoDepth: number;
+  /** Labels for the next undo/redo, shown as button tooltips. */
+  nextUndoLabel: string | null;
+  nextRedoLabel: string | null;
+
   bootstrap: () => Promise<void>;
   openMap: (mapId: string) => Promise<void>;
   reload: () => Promise<void>;
@@ -64,6 +71,10 @@ interface GraphState {
   deleteGroup: (id: string) => Promise<void>;
   runAutoLayout: (persist?: boolean) => Promise<void>;
 
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+  refreshUndoState: () => Promise<void>;
+
   applyEvent: (e: ServerEvent) => void;
   setConnected: (v: boolean) => void;
   toast: (message: string, kind?: Toast["kind"]) => void;
@@ -88,6 +99,10 @@ export const useGraph = create<GraphState>((set, get) => ({
   loading: true,
   connected: false,
   toasts: [],
+  undoDepth: 0,
+  redoDepth: 0,
+  nextUndoLabel: null,
+  nextRedoLabel: null,
 
   bootstrap: async () => {
     set({ loading: true });
@@ -100,6 +115,9 @@ export const useGraph = create<GraphState>((set, get) => ({
       const target = maps.find((m) => m.id === preferred) ?? maps[0];
       if (target) await get().openMap(target.id);
       else set({ loading: false });
+      // Undo history is server-side, so it survives a reload — the buttons
+      // must reflect that on first paint rather than appearing empty.
+      await get().refreshUndoState();
     } catch (err) {
       get().toast(describe(err));
       set({ loading: false });
@@ -357,6 +375,65 @@ export const useGraph = create<GraphState>((set, get) => ({
   },
 
   /**
+   * Undo, performed server-side and scoped to this client.
+   *
+   * The whole graph is refetched afterwards rather than patched locally. A
+   * single undo can restore a node, its placements on several maps and every
+   * edge that pointed at it; reconstructing that from a diff is exactly the
+   * kind of thing that silently drifts out of sync, and correctness matters
+   * more here than one round trip.
+   */
+  undo: async () => {
+    const { mapId } = get();
+    try {
+      const res = await api.undo(mapId ?? undefined);
+      if (!res.applied) {
+        get().toast("Nothing left to undo.", "info");
+        return;
+      }
+      await get().reload();
+      await get().refreshUndoState();
+      // Naming what was reversed is most of undo's value: it tells the user
+      // whether the thing that vanished is the thing they meant to remove.
+      get().toast(`Undone: ${res.entry?.label ?? "last change"}`, "info");
+    } catch (err) {
+      get().toast(describe(err));
+    }
+  },
+
+  redo: async () => {
+    const { mapId } = get();
+    try {
+      const res = await api.redo(mapId ?? undefined);
+      if (!res.applied) {
+        get().toast("Nothing left to redo.", "info");
+        return;
+      }
+      await get().reload();
+      await get().refreshUndoState();
+      get().toast(`Redone: ${res.entry?.label ?? "last change"}`, "info");
+    } catch {
+      // A failed redo is not worth interrupting the user over; the button
+      // state refreshes on the next action anyway.
+    }
+  },
+
+  refreshUndoState: async () => {
+    const { mapId } = get();
+    try {
+      const s = await api.undoState(mapId ?? undefined);
+      set({
+        undoDepth: s.undoDepth,
+        redoDepth: s.redoDepth,
+        nextUndoLabel: s.nextUndo?.label ?? null,
+        nextRedoLabel: s.nextRedo?.label ?? null,
+      });
+    } catch {
+      // Button affordances only; not worth surfacing.
+    }
+  },
+
+  /**
    * WebSocket events. Echoes of this tab's own writes are ignored, since the
    * optimistic state is already correct and re-applying would clobber an
    * in-flight edit.
@@ -517,6 +594,16 @@ function freeSpot(nodes: DMNode[]) {
   }
   return { x: maxX + 320, y: n ? sumY / n : 0 };
 }
+
+// Refresh undo depth after any write, coalesced so that a fast capture run
+// issues one request rather than one per keystroke.
+let undoRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+onMutation(() => {
+  clearTimeout(undoRefreshTimer);
+  undoRefreshTimer = setTimeout(() => {
+    void useGraph.getState().refreshUndoState();
+  }, 250);
+});
 
 export function describe(err: unknown): string {
   if (err instanceof ApiError) return err.humanMessage;

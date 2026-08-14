@@ -86,7 +86,7 @@ export const InstallationGuide: React.FC = () => {
           <div className="card" style={{ maxWidth: '850px', margin: '0 auto', background: 'var(--bg-card)' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Download style={{ color: 'var(--accent-cyan)' }} />
-              <span>Download Standalone Binary (v0.0.4)</span>
+              <span>Download Standalone Binary (v0.0.5)</span>
             </h3>
             <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
               No Go or Node install required on target machines. Download the binary for your operating system:

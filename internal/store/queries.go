@@ -214,6 +214,24 @@ func (s *Store) CreateNode(in NewNodeInput) (*Node, *Edge, error) {
 		}
 	}
 
+	// Journalled inside the same transaction as the write: a change without a
+	// recoverable inverse is a silent data-loss risk, so they commit together
+	// or not at all.
+	snap := snapshot{
+		Node:       n,
+		Placements: []placement{{MapID: in.MapID, NodeID: n.ID, X: in.X, Y: in.Y, AddedAt: now}},
+	}
+	if edge != nil {
+		snap.Edges = []Edge{*edge}
+	}
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return nil, nil, err
+	}
+	if err := recordTx(tx, in.MapID, s.actor, ActionCreateNode,
+		"added "+describeNode(n), snap, snap); err != nil {
+		return nil, nil, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, nil, err
 	}
@@ -306,6 +324,11 @@ func (s *Store) UpdateNode(id string, patch NodePatch) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Snapshot before mutating: undo of an edit restores the previous field
+	// values verbatim rather than trying to invert a diff.
+	before := *current
+	beforeContent := current.Content
+	before.Content = beforeContent
 
 	if patch.Type != nil {
 		if !ibis.IsValidNodeType(*patch.Type) {
@@ -342,15 +365,81 @@ func (s *Store) UpdateNode(id string, patch NodePatch) (*Node, error) {
 		return nil, err
 	}
 	current.UpdatedAt = nowISO()
-	_, err = s.db.Exec(
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(
 		`UPDATE nodes SET type = ?, title = ?, content = ?, updated_at = ?
 		 WHERE id = ?`,
-		current.Type, current.Title, payload, current.UpdatedAt, id)
-	if err != nil {
+		current.Type, current.Title, payload, current.UpdatedAt, id); err != nil {
+		return nil, err
+	}
+
+	// A title typed character by character would otherwise fill the journal
+	// with one entry per keystroke, so undo of an edit collapses onto the
+	// previous entry when it is the same actor editing the same node. The
+	// original "before" state is preserved, so one Ctrl-Z reverts the whole
+	// edit rather than one letter of it.
+	if merged, err := mergeEditTx(tx, s.actor, id, current); err != nil {
+		return nil, err
+	} else if !merged {
+		if err := clearRedoTx(tx, s.actor); err != nil {
+			return nil, err
+		}
+		if err := recordTx(tx, "", s.actor, ActionUpdateNode,
+			"edited "+describeNode(current),
+			snapshot{Node: &before}, snapshot{Node: current}); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	current.Content.normalize()
 	return current, nil
+}
+
+// mergeEditTx folds this edit into the previous journal entry when it is the
+// same actor editing the same node consecutively, and reports whether it did.
+func mergeEditTx(tx *sql.Tx, actor, nodeID string, after *Node) (bool, error) {
+	var id int64
+	var action UndoAction
+	var inverse string
+	err := tx.QueryRow(
+		`SELECT id, action, inverse FROM undo_log
+		 WHERE actor = ? AND undone = 0 ORDER BY id DESC LIMIT 1`, actor).
+		Scan(&id, &action, &inverse)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if action != ActionUpdateNode {
+		return false, nil
+	}
+	var prev snapshot
+	if err := json.Unmarshal([]byte(inverse), &prev); err != nil {
+		return false, err
+	}
+	if prev.Node == nil || prev.Node.ID != nodeID {
+		return false, nil
+	}
+	// Same node, same actor, most recent entry: update the forward state and
+	// the label, leaving the original "before" snapshot untouched.
+	forward, err := json.Marshal(snapshot{Node: after})
+	if err != nil {
+		return false, err
+	}
+	_, err = tx.Exec(
+		`UPDATE undo_log SET forward = ?, label = ?, created_at = ? WHERE id = ?`,
+		string(forward), "edited "+describeNode(after), nowISO(), id)
+	return err == nil, err
 }
 
 // validateRetype rejects a type change that would orphan existing edges,
@@ -415,11 +504,105 @@ func (s *Store) SetPlacement(mapID, nodeID string, x, y *float64, collapsed *boo
 	if len(sets) == 0 {
 		return nil
 	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	before, err := placementTx(tx, mapID, nodeID)
+	if err != nil {
+		return err
+	}
+
 	args = append(args, mapID, nodeID)
-	_, err := s.db.Exec(
+	if _, err := tx.Exec(
 		`UPDATE map_nodes SET `+strings.Join(sets, ", ")+
-			` WHERE map_id = ? AND node_id = ?`, args...)
-	return err
+			` WHERE map_id = ? AND node_id = ?`, args...); err != nil {
+		return err
+	}
+
+	// Giving a node its first coordinates is not a user action worth undoing.
+	// Nodes arriving from the CLI, an agent or a phone have no position, and
+	// the client assigns one via auto-layout the moment the map is opened.
+	// Journalling that filled the undo history with moves nobody made — so
+	// Ctrl-Z straight after opening a seeded map reversed a layout decision
+	// instead of the user's last real edit.
+	firstPlacement := before != nil && before.X == nil && before.Y == nil
+
+	if before != nil && !firstPlacement {
+		after, err := placementTx(tx, mapID, nodeID)
+		if err != nil {
+			return err
+		}
+		// Dragging a node back and forth should not bury the real work under
+		// dozens of move entries, so consecutive moves of the same node by the
+		// same actor collapse into one.
+		if merged, err := mergeMoveTx(tx, s.actor, mapID, nodeID, *after); err != nil {
+			return err
+		} else if !merged {
+			if err := clearRedoTx(tx, s.actor); err != nil {
+				return err
+			}
+			if err := recordTx(tx, mapID, s.actor, ActionMoveNode, "moved a node",
+				snapshot{Placements: []placement{*before}},
+				snapshot{Placements: []placement{*after}}); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+func placementTx(tx *sql.Tx, mapID, nodeID string) (*placement, error) {
+	var p placement
+	var group sql.NullString
+	err := tx.QueryRow(
+		`SELECT map_id, node_id, x, y, collapsed, group_id, added_at
+		 FROM map_nodes WHERE map_id = ? AND node_id = ?`, mapID, nodeID).
+		Scan(&p.MapID, &p.NodeID, &p.X, &p.Y, &p.Collapsed, &group, &p.AddedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if group.Valid {
+		p.GroupID = &group.String
+	}
+	return &p, nil
+}
+
+func mergeMoveTx(tx *sql.Tx, actor, mapID, nodeID string, after placement) (bool, error) {
+	var id int64
+	var action UndoAction
+	var inverse string
+	err := tx.QueryRow(
+		`SELECT id, action, inverse FROM undo_log
+		 WHERE actor = ? AND undone = 0 ORDER BY id DESC LIMIT 1`, actor).
+		Scan(&id, &action, &inverse)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil || action != ActionMoveNode {
+		return false, err
+	}
+	var prev snapshot
+	if err := json.Unmarshal([]byte(inverse), &prev); err != nil {
+		return false, err
+	}
+	if len(prev.Placements) != 1 ||
+		prev.Placements[0].NodeID != nodeID || prev.Placements[0].MapID != mapID {
+		return false, nil
+	}
+	forward, err := json.Marshal(snapshot{Placements: []placement{after}})
+	if err != nil {
+		return false, err
+	}
+	_, err = tx.Exec(`UPDATE undo_log SET forward = ?, created_at = ? WHERE id = ?`,
+		string(forward), nowISO(), id)
+	return err == nil, err
 }
 
 // Transclude adds an existing node to another map. This is the operation that
@@ -428,12 +611,38 @@ func (s *Store) Transclude(mapID, nodeID string, x, y *float64) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
-	_, err := s.db.Exec(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	now := nowISO()
+	res, err := tx.Exec(
 		`INSERT INTO map_nodes (map_id, node_id, x, y, added_at)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT (map_id, node_id) DO NOTHING`,
-		mapID, nodeID, x, y, nowISO())
-	return err
+		mapID, nodeID, x, y, now)
+	if err != nil {
+		return err
+	}
+	// Already on this map: nothing changed, so nothing to journal. Recording
+	// a no-op would make one Ctrl-Z appear to do nothing at all.
+	if n, _ := res.RowsAffected(); n == 0 {
+		return tx.Commit()
+	}
+
+	snap := snapshot{Placements: []placement{
+		{MapID: mapID, NodeID: nodeID, X: x, Y: y, AddedAt: now},
+	}}
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return err
+	}
+	if err := recordTx(tx, mapID, s.actor, ActionTransclude,
+		"inserted a shared node", snap, snap); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // RemoveFromMap detaches a node from one map, deleting the edges that only
@@ -448,6 +657,14 @@ func (s *Store) RemoveFromMap(mapID, nodeID string) error {
 	}
 	defer tx.Rollback()
 
+	// Capture the placement and this map's edges before they are destroyed —
+	// restoring a node without the arguments attached to it would be a worse
+	// outcome than not offering undo.
+	snap, err := nodeSnapshotTx(tx, nodeID, mapID)
+	if err != nil {
+		return err
+	}
+
 	if _, err := tx.Exec(
 		`DELETE FROM edges WHERE map_id = ? AND (source_node_id = ? OR target_node_id = ?)`,
 		mapID, nodeID, nodeID); err != nil {
@@ -458,6 +675,14 @@ func (s *Store) RemoveFromMap(mapID, nodeID string) error {
 		mapID, nodeID); err != nil {
 		return err
 	}
+
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return err
+	}
+	if err := recordTx(tx, mapID, s.actor, ActionRemoveNode,
+		"removed "+describeNode(snap.Node)+" from this map", snap, snap); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -466,8 +691,36 @@ func (s *Store) RemoveFromMap(mapID, nodeID string) error {
 func (s *Store) DeleteNode(id string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	_, err := s.db.Exec(`DELETE FROM nodes WHERE id = ?`, id)
-	return err
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// An unscoped snapshot: every placement on every map, and every edge on
+	// every map. Deleting a transcluded node reaches further than the canvas
+	// shows, and undo has to reach exactly as far back.
+	snap, err := nodeSnapshotTx(tx, id, "")
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM nodes WHERE id = ?`, id); err != nil {
+		return err
+	}
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return err
+	}
+	label := "deleted " + describeNode(snap.Node)
+	if len(snap.Placements) > 1 {
+		label = fmt.Sprintf("deleted %s from %d maps",
+			describeNode(snap.Node), len(snap.Placements))
+	}
+	if err := recordTx(tx, "", s.actor, ActionDeleteNode, label, snap, snap); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SearchNodes finds nodes by title, body or tag across the whole project. Used
@@ -671,6 +924,16 @@ func (s *Store) CreateEdge(mapID, sourceID, targetID string, rel ibis.Relationsh
 	if err != nil {
 		return nil, err
 	}
+
+	snap := snapshot{Edges: []Edge{*e}}
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return nil, err
+	}
+	if err := recordTx(tx, mapID, s.actor, ActionCreateEdge,
+		fmt.Sprintf("linked %s", rel), snap, snap); err != nil {
+		return nil, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -776,8 +1039,37 @@ func reachableTx(tx *sql.Tx, mapID, from, goal string) (bool, error) {
 func (s *Store) DeleteEdge(id string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	_, err := s.db.Exec(`DELETE FROM edges WHERE id = ?`, id)
-	return err
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var e Edge
+	err = tx.QueryRow(
+		`SELECT id, map_id, source_node_id, target_node_id, relationship_type, created_at
+		 FROM edges WHERE id = ?`, id).
+		Scan(&e.ID, &e.MapID, &e.SourceNodeID, &e.TargetNodeID, &e.Relationship, &e.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // already gone; nothing to journal
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM edges WHERE id = ?`, id); err != nil {
+		return err
+	}
+	snap := snapshot{Edges: []Edge{e}}
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return err
+	}
+	if err := recordTx(tx, e.MapID, s.actor, ActionDeleteEdge,
+		fmt.Sprintf("unlinked %s", e.Relationship), snap, snap); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // --- groups ----------------------------------------------------------------
@@ -787,22 +1079,54 @@ func (s *Store) UpsertGroup(g Group) (*Group, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// The inverse of creating a group is deleting it; the inverse of moving
+	// one is its previous geometry. A zero CreatedAt in the inverse payload is
+	// the marker for "this did not exist before".
+	var inverse snapshot
+
 	if g.ID == "" {
 		g.ID = NewID("grp")
 		g.CreatedAt = nowISO()
 		if g.Color == "" {
 			g.Color = "slate"
 		}
-		_, err := s.db.Exec(
+		if _, err := tx.Exec(
 			`INSERT INTO groups (id, map_id, title, color, x, y, w, h, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			g.ID, g.MapID, g.Title, g.Color, g.X, g.Y, g.W, g.H, g.CreatedAt)
-		return &g, err
+			g.ID, g.MapID, g.Title, g.Color, g.X, g.Y, g.W, g.H, g.CreatedAt); err != nil {
+			return nil, err
+		}
+		inverse = snapshot{Groups: []Group{{ID: g.ID, MapID: g.MapID}}}
+	} else {
+		prev, err := groupSnapshotTx(tx, g.ID)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(
+			`UPDATE groups SET title = ?, color = ?, x = ?, y = ?, w = ?, h = ?
+			 WHERE id = ?`, g.Title, g.Color, g.X, g.Y, g.W, g.H, g.ID); err != nil {
+			return nil, err
+		}
+		inverse = prev
 	}
-	_, err := s.db.Exec(
-		`UPDATE groups SET title = ?, color = ?, x = ?, y = ?, w = ?, h = ?
-		 WHERE id = ?`, g.Title, g.Color, g.X, g.Y, g.W, g.H, g.ID)
-	return &g, err
+
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return nil, err
+	}
+	if err := recordTx(tx, g.MapID, s.actor, ActionSaveGroup, "changed a group",
+		inverse, snapshot{Groups: []Group{g}}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &g, nil
 }
 
 // GroupsFor returns every bounding box on a map.
@@ -830,8 +1154,31 @@ func (s *Store) GroupsFor(mapID string) ([]Group, error) {
 func (s *Store) DeleteGroup(id string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	_, err := s.db.Exec(`DELETE FROM groups WHERE id = ?`, id)
-	return err
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	snap, err := groupSnapshotTx(tx, id)
+	if err != nil {
+		return err
+	}
+	if len(snap.Groups) == 0 {
+		return nil
+	}
+	if _, err := tx.Exec(`DELETE FROM groups WHERE id = ?`, id); err != nil {
+		return err
+	}
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return err
+	}
+	if err := recordTx(tx, snap.Groups[0].MapID, s.actor, ActionDeleteGroup,
+		"deleted a group", snap, snap); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // --- assets ----------------------------------------------------------------
