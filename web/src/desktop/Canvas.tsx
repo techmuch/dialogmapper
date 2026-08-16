@@ -37,25 +37,77 @@ const TYPE_COLORS: Record<NodeType, string> = {
   map: "#bb9af7",
 };
 
+/** Padding between a group's members and the outline drawn around them. */
+const GROUP_PADDING = 26;
+/** Room above the box for its label. */
+const GROUP_LABEL_SPACE = 22;
+
+interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The rectangle enclosing a group's members, plus padding.
+ *
+ * Derived rather than stored: the box is a view of where the nodes are, so a
+ * member that moves takes the outline with it and the two can never disagree.
+ * Returns null when nothing measurable is in the group, in which case there is
+ * nothing to draw.
+ */
+function groupBounds(
+  memberIds: string[],
+  nodes: Record<string, DMNode>,
+  measured: Map<string, { width?: number; height?: number } | undefined>,
+): Bounds | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const id of memberIds) {
+    const p = nodes[id]?.placement;
+    if (!p || p.x == null || p.y == null) continue;
+    const size = measured.get(id);
+    const w = size?.width ?? NODE_W;
+    const h = size?.height ?? NODE_H;
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x + w);
+    maxY = Math.max(maxY, p.y + h);
+  }
+  if (!Number.isFinite(minX)) return null;
+
+  return {
+    x: minX - GROUP_PADDING,
+    y: minY - GROUP_PADDING - GROUP_LABEL_SPACE,
+    width: maxX - minX + GROUP_PADDING * 2,
+    height: maxY - minY + GROUP_PADDING * 2 + GROUP_LABEL_SPACE,
+  };
+}
+
 function CanvasInner() {
   const flowRef = useRef<ReactFlowInstance | null>(null);
-  const [armedGroup, setArmedGroup] = useState(false);
-  const dragStart = useRef<{ x: number; y: number } | null>(null);
   const rf = useReactFlow();
-  // Reactive zoom, so the preview outline stays a constant on-screen weight
-  // while the user zooms rather than only being right at first render.
+  // Reactive zoom, so outlines stay a constant on-screen weight while zooming
+  // rather than only being right at first render.
   const zoom = useStore((s) => s.transform[2]);
 
   const nodes = useGraph((s) => s.nodes);
   const edges = useGraph((s) => s.edges);
   const groups = useGraph((s) => s.groups);
   const selectedId = useGraph((s) => s.selectedId);
+  const multiSelected = useGraph((s) => s.multiSelected);
   const select = useGraph((s) => s.select);
+  const setSelection = useGraph((s) => s.setSelection);
+  const toggleSelected = useGraph((s) => s.toggleSelected);
   const moveNode = useGraph((s) => s.moveNode);
   const link = useGraph((s) => s.link);
   const unlink = useGraph((s) => s.unlink);
   const createRoot = useGraph((s) => s.createRoot);
-  const saveGroup = useGraph((s) => s.saveGroup);
+  const groupSelection = useGraph((s) => s.groupSelection);
 
   const ui = useUI();
 
@@ -79,23 +131,35 @@ function CanvasInner() {
     setRfNodes((prev) => {
       const measured = new Map(prev.map((n) => [n.id, n.measured]));
 
-      const boxes: RFNode[] = Object.values(groups).map((g) => ({
-        id: g.id,
-        type: "groupBox",
-        position: { x: g.x, y: g.y },
-        data: { group: g },
-        draggable: true,
-        selectable: false,
-        zIndex: -1,
-        style: { width: g.w, height: g.h },
-        measured: measured.get(g.id),
-      }));
+      // Group outlines are computed from their members, so they update for
+      // free whenever a member moves — including mid-drag.
+      const boxes: RFNode[] = [];
+      for (const g of Object.values(groups)) {
+        const bounds = groupBounds(g.nodeIds, nodes, measured);
+        if (!bounds) continue;
+        boxes.push({
+          id: g.id,
+          type: "groupBox",
+          position: { x: bounds.x, y: bounds.y },
+          data: { group: g, width: bounds.width, height: bounds.height },
+          // Not draggable by React Flow: its position is derived from the
+          // members, so GroupBox handles the pointer itself. See the comment
+          // there for why the two cannot both drive it.
+          draggable: false,
+          selectable: false,
+          // Behind the cards, so clicking a node inside a group selects the
+          // node and dragging the surrounding space moves the whole group.
+          zIndex: -1,
+          style: { width: bounds.width, height: bounds.height },
+          measured: { width: bounds.width, height: bounds.height },
+        });
+      }
 
       const cards: RFNode[] = Object.values(nodes).map((n) => ({
         id: n.id,
         type: "ibis",
         position: { x: n.placement?.x ?? 0, y: n.placement?.y ?? 0 },
-        selected: n.id === selectedId,
+        selected: n.id === selectedId || multiSelected.has(n.id),
         data: { node: n, dimmed: !visible.has(n.id) } satisfies NodeCardData,
         zIndex: 1,
         measured: measured.get(n.id),
@@ -103,7 +167,7 @@ function CanvasInner() {
 
       return [...boxes, ...cards];
     });
-  }, [nodes, groups, selectedId, visible]);
+  }, [nodes, groups, selectedId, multiSelected, visible]);
 
   const rfEdges = useMemo<RFEdge[]>(
     () =>
@@ -133,11 +197,32 @@ function CanvasInner() {
       // position: only drag-end writes back, so a drag is one round trip
       // rather than one per frame.
       setRfNodes((ns) => applyNodeChanges(changes, ns));
-      for (const c of changes) {
-        if (c.type === "select" && c.selected) select(c.id);
-      }
+
+      // Selection changes arrive as a batch, including the deselections that
+      // a marquee produces. Reading the whole batch keeps multi-select and
+      // single click on one code path.
+      const selects = changes.filter(
+        (c): c is NodeChange & { type: "select"; id: string; selected: boolean } =>
+          c.type === "select",
+      );
+      if (selects.length === 0) return;
+
+      setRfNodes((ns) => {
+        const chosen = ns
+          .filter((n) => n.type === "ibis" && n.selected)
+          .map((n) => n.id);
+        // Defer, because this runs inside a state updater.
+        queueMicrotask(() => {
+          const current = useGraph.getState();
+          const same =
+            chosen.length === current.selectedIds().length &&
+            chosen.every((id) => id === current.selectedId || current.multiSelected.has(id));
+          if (!same) setSelection(chosen);
+        });
+        return ns;
+      });
     },
-    [select],
+    [setSelection],
   );
 
   const onConnect = useCallback(
@@ -158,36 +243,19 @@ function CanvasInner() {
     ),
   });
 
+  const selectionCount = selectedId ? 1 + multiSelected.size : 0;
+
+  // Show the user what grouping the current selection would enclose, before
+  // they commit to it.
+  const pendingBounds = useMemo(() => {
+    if (selectionCount < 2) return null;
+    const ids = selectedId ? [selectedId, ...multiSelected] : [];
+    const measured = new Map(rfNodes.map((n) => [n.id, n.measured]));
+    return groupBounds(ids, nodes, measured);
+  }, [selectionCount, selectedId, multiSelected, nodes, rfNodes]);
+
   return (
-    <div
-      className={`canvas ${armedGroup ? "canvas--arming" : ""}`}
-      onPointerDown={(ev) => {
-        if (!armedGroup) return;
-        const p = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
-        dragStart.current = p;
-        ui.setDrawingGroup({ x: p.x, y: p.y, w: 0, h: 0 });
-      }}
-      onPointerMove={(ev) => {
-        if (!armedGroup || !dragStart.current) return;
-        const p = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
-        const s = dragStart.current;
-        ui.setDrawingGroup({
-          x: Math.min(s.x, p.x),
-          y: Math.min(s.y, p.y),
-          w: Math.abs(p.x - s.x),
-          h: Math.abs(p.y - s.y),
-        });
-      }}
-      onPointerUp={() => {
-        const box = ui.drawingGroup;
-        dragStart.current = null;
-        setArmedGroup(false);
-        ui.setDrawingGroup(null);
-        if (box && box.w > 40 && box.h > 40) {
-          void saveGroup({ ...box, title: "Cluster", color: "slate" });
-        }
-      }}
-    >
+    <div className="canvas">
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}
@@ -196,14 +264,18 @@ function CanvasInner() {
         onNodesChange={onNodesChange}
         onConnect={onConnect}
         onNodeDragStop={(_, node) => {
-          if (node.type === "groupBox") {
-            const g = groups[node.id];
-            if (g) void saveGroup({ ...g, x: node.position.x, y: node.position.y });
-            return;
-          }
+          // Group outlines are dragged by GroupBox itself, so anything React
+          // Flow reports here is a node.
+          if (node.type === "groupBox") return;
           moveNode(node.id, node.position.x, node.position.y);
         }}
-        onNodeClick={(_, node) => node.type !== "groupBox" && select(node.id)}
+        onNodeClick={(ev, node) => {
+          if (node.type === "groupBox") return;
+          // Shift-click adds to the selection, which is how a group gets
+          // assembled out of nodes that a marquee would not cleanly enclose.
+          if (ev.shiftKey) toggleSelected(node.id);
+          else select(node.id);
+        }}
         onNodeDoubleClick={(_, node) => {
           if (node.type === "groupBox") return;
           useGraph.getState().beginEdit(node.id);
@@ -211,14 +283,16 @@ function CanvasInner() {
         onEdgeDoubleClick={(_, edge) => void unlink(edge.id)}
         onPaneClick={() => select(null)}
         onDoubleClick={(ev) => {
-          if (armedGroup) return;
           const p = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
           void createRoot("question", p.x - NODE_W / 2, p.y - NODE_H / 2);
         }}
-        // Panning with the left button keeps the canvas feeling like a map;
-        // selection boxes are a rarer action and get the shift modifier.
-        panOnDrag={!armedGroup}
-        selectionOnDrag={false}
+        // Plain drag pans, because the canvas should feel like a map. Shift
+        // drags a selection box and shift-click extends the selection, which
+        // is the convention every other canvas tool uses.
+        panOnDrag
+        selectionOnDrag
+        selectionKeyCode="Shift"
+        multiSelectionKeyCode="Shift"
         nodesDraggable={ui.layoutMode === "freeform"}
         minZoom={0.08}
         maxZoom={2.5}
@@ -226,7 +300,6 @@ function CanvasInner() {
         fitView
         fitViewOptions={{ padding: 0.25 }}
         deleteKeyCode={null}
-        multiSelectionKeyCode={null}
         // React Flow makes node wrappers focusable and focuses the newly
         // selected one for its own keyboard accessibility. That fires after
         // the title editor has focused itself, so pressing `q` opened an
@@ -256,25 +329,22 @@ function CanvasInner() {
         )}
 
         {/*
-          The preview must live inside the viewport transform, not alongside
-          it. As a plain child of <ReactFlow> it was positioned in screen
-          pixels while its coordinates came from screenToFlowPosition — so the
-          rubber band drifted from the cursor by the current pan, and scaled
-          wrongly with zoom, then snapped into place on release because the
-          saved group is a real node in flow space. ViewportPortal renders into
-          the transformed pane, where flow coordinates are what's wanted.
+          A preview of what grouping the current selection would enclose.
+          Rendered inside the viewport transform so its flow coordinates line
+          up with the cursor — as a plain child of <ReactFlow> it would be
+          positioned in screen pixels and drift by the current pan.
         */}
         <ViewportPortal>
-          {ui.drawingGroup && (
+          {pendingBounds && (
             <div
               className="group-preview"
               style={{
-                transform: `translate(${ui.drawingGroup.x}px, ${ui.drawingGroup.y}px)`,
-                width: ui.drawingGroup.w,
-                height: ui.drawingGroup.h,
-                // Inside the viewport everything scales with zoom, which would
-                // make the outline a hairline when zoomed out and heavy when
-                // zoomed in. Dividing by zoom keeps it constant on screen.
+                transform: `translate(${pendingBounds.x}px, ${pendingBounds.y}px)`,
+                width: pendingBounds.width,
+                height: pendingBounds.height,
+                // Everything inside the viewport scales with zoom, which would
+                // make the outline a hairline when zoomed out. Dividing by
+                // zoom keeps it a constant weight on screen.
                 borderWidth: 1.5 / zoom,
               }}
             />
@@ -282,13 +352,15 @@ function CanvasInner() {
         </ViewportPortal>
       </ReactFlow>
 
-      <button
-        className={`canvas__group-btn ${armedGroup ? "is-armed" : ""}`}
-        onClick={() => setArmedGroup((v) => !v)}
-        title="Draw a bounding box around a cluster"
-      >
-        {armedGroup ? "Drag to draw a group — Esc to cancel" : "⬚ Group"}
-      </button>
+      {selectionCount >= 2 && (
+        <button
+          className="canvas__group-btn is-armed"
+          onClick={() => void groupSelection()}
+          title="Group the selected nodes so they move together (g)"
+        >
+          ⬚ Group {selectionCount} nodes
+        </button>
+      )}
 
       {isFilterActive(ui) && (
         <button className="canvas__filter-note" onClick={ui.resetFilters}>

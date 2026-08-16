@@ -26,7 +26,8 @@ var schemaSQL string
 // migration. Stored in schema_meta so an old binary refuses a newer database
 // rather than corrupting it.
 // v2 added the undo_log journal.
-const SchemaVersion = 2
+// v3 made groups own their members instead of being free-floating rectangles.
+const SchemaVersion = 3
 
 // DBFileName is the conventional database filename inside a project.
 const DBFileName = "maps.db"
@@ -151,13 +152,85 @@ func (s *Store) migrate() error {
 			have, SchemaVersion)
 	}
 	if have < SchemaVersion {
-		// Future migrations slot in here, keyed off `have`.
+		if err := s.upgrade(have); err != nil {
+			return err
+		}
 		_, err = s.db.Exec(
 			`UPDATE schema_meta SET value = ? WHERE key = 'version'`,
 			fmt.Sprint(SchemaVersion))
 		return err
 	}
 	return nil
+}
+
+// upgrade runs the migrations needed to bring a database from `have` to the
+// current version. schema.sql only ever creates missing tables, so anything
+// that changes the shape of an existing one has to happen here.
+func (s *Store) upgrade(have int) error {
+	if have < 3 {
+		// v3 removed the geometry columns from `groups`: a group's outline is
+		// now derived from where its member nodes are, so stored coordinates
+		// could only ever go stale. Membership itself already lived in
+		// map_nodes.group_id and is carried across untouched.
+		if err := s.rebuildGroupsTable(); err != nil {
+			return fmt.Errorf("migrate groups to v3: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) rebuildGroupsTable() error {
+	var hasGeometry bool
+	rows, err := s.db.Query(`PRAGMA table_info(groups)`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "x" {
+			hasGeometry = true
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !hasGeometry {
+		return nil // already migrated, or created fresh
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, stmt := range []string{
+		`CREATE TABLE groups_v3 (
+			id         TEXT PRIMARY KEY,
+			map_id     TEXT NOT NULL REFERENCES maps (id) ON DELETE CASCADE,
+			title      TEXT NOT NULL DEFAULT '',
+			color      TEXT NOT NULL DEFAULT 'slate',
+			created_at TEXT NOT NULL
+		)`,
+		`INSERT INTO groups_v3 (id, map_id, title, color, created_at)
+		 SELECT id, map_id, title, color, created_at FROM groups`,
+		`DROP TABLE groups`,
+		`ALTER TABLE groups_v3 RENAME TO groups`,
+		`CREATE INDEX IF NOT EXISTS idx_groups_map ON groups (map_id)`,
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // DataVersion returns SQLite's data_version counter, which changes whenever

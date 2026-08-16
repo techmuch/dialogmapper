@@ -1,19 +1,13 @@
-import { expect, openCanvas, test } from "../fixtures";
 import type { Page } from "@playwright/test";
+import { expect, openCanvas, selectNode, test } from "../fixtures";
 
 /**
- * The group rubber band must track the cursor.
+ * Groups own their members.
  *
- * It did not: the preview was a plain child of <ReactFlow>, so it was
- * positioned in screen pixels, while its coordinates came from
- * screenToFlowPosition and were therefore flow coordinates. The box drifted
- * from the cursor by the current pan and scaled wrongly with zoom, then
- * snapped into place on release because the committed group is a real node in
- * flow space.
- *
- * The measurement below is the point of this file: it compares where the
- * preview appears on screen against where the group lands, so any future
- * coordinate-space mistake fails loudly instead of being "a bit off".
+ * The first version of this feature was a rectangle drawn behind the canvas
+ * with nothing inside it: it had its own stored geometry, and moving it moved
+ * only the box. These tests pin the behaviour that makes a group a group —
+ * the bounds come from the selection, and dragging carries the nodes along.
  */
 
 interface Box {
@@ -23,151 +17,229 @@ interface Box {
   height: number;
 }
 
-async function drawGroup(
-  page: Page,
-  from: { x: number; y: number },
-  to: { x: number; y: number },
-): Promise<{ preview: Box; committed: Box; cursor: Box }> {
-  await page.locator(".canvas__group-btn").click();
-
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 6 });
-  await page.mouse.move(to.x, to.y, { steps: 6 });
-
-  const preview = await page.locator(".group-preview").boundingBox();
-  expect(preview, "no rubber band appeared while dragging").not.toBeNull();
-
-  await page.mouse.up();
-
-  const group = page.locator(".group").last();
-  await expect(group).toBeVisible();
-  const committed = await group.boundingBox();
-  expect(committed).not.toBeNull();
-
-  return {
-    preview: preview!,
-    committed: committed!,
-    cursor: {
-      x: Math.min(from.x, to.x),
-      y: Math.min(from.y, to.y),
-      width: Math.abs(to.x - from.x),
-      height: Math.abs(to.y - from.y),
-    },
-  };
+async function boxOf(page: Page, selector: string): Promise<Box> {
+  const b = await page.locator(selector).first().boundingBox();
+  expect(b, `${selector} has no bounding box`).not.toBeNull();
+  return b!;
 }
 
-/** Boxes must agree to within a pixel or so of rounding. */
-function expectSameBox(a: Box, b: Box, what: string) {
-  const tolerance = 2;
-  expect(Math.abs(a.x - b.x), `${what}: x is off by ${(a.x - b.x).toFixed(1)}px`)
-    .toBeLessThan(tolerance);
-  expect(Math.abs(a.y - b.y), `${what}: y is off by ${(a.y - b.y).toFixed(1)}px`)
-    .toBeLessThan(tolerance);
-  expect(
-    Math.abs(a.width - b.width),
-    `${what}: width is off by ${(a.width - b.width).toFixed(1)}px`,
-  ).toBeLessThan(tolerance);
-  expect(
-    Math.abs(a.height - b.height),
-    `${what}: height is off by ${(a.height - b.height).toFixed(1)}px`,
-  ).toBeLessThan(tolerance);
+async function nodeBox(page: Page, title: string): Promise<Box> {
+  const b = await page.locator(".node", { hasText: title }).first().boundingBox();
+  expect(b, `node "${title}" has no bounding box`).not.toBeNull();
+  return b!;
 }
 
-async function pan(page: Page, dx: number, dy: number) {
-  // Drag on empty canvas, well clear of any node.
-  await page.mouse.move(1050, 180);
-  await page.mouse.down();
-  await page.mouse.move(1050 + dx, 180 + dy, { steps: 8 });
-  await page.mouse.up();
-  await page.waitForTimeout(150);
-}
-
-async function zoomOut(page: Page, steps: number) {
-  for (let i = 0; i < steps; i++) {
-    await page.mouse.move(640, 380);
-    await page.mouse.wheel(0, 120);
-    await page.waitForTimeout(60);
+/** Selects several nodes by shift-clicking each after the first. */
+async function selectNodes(page: Page, titles: string[]) {
+  await selectNode(page, titles[0]);
+  for (const title of titles.slice(1)) {
+    await page.locator(".node", { hasText: title }).first().click({ modifiers: ["Shift"] });
   }
+  await expect(page.locator(".node.is-selected")).toHaveCount(titles.length);
 }
 
-test("the group preview tracks the cursor with an untouched viewport", async ({
-  page,
-  dm,
-}) => {
-  await openCanvas(page, dm);
+const MEMBERS = ["Add a read-through cache", "Cuts p99 to 200ms", "Invalidation is forever"];
 
-  // Note this case was broken too: fitView on load leaves a non-identity
-  // transform, so the bug showed up before the user panned anything.
-  const { preview, committed, cursor } = await drawGroup(
-    page,
-    { x: 340, y: 190 },
-    { x: 690, y: 470 },
-  );
-  expectSameBox(preview, cursor, "preview vs cursor");
-  expectSameBox(preview, committed, "preview vs committed group");
+test("shift-click builds a multi-node selection", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await selectNodes(page, MEMBERS);
+
+  // The affordance only appears once grouping is actually possible.
+  await expect(page.locator(".canvas__group-btn")).toContainText("3 nodes");
 });
 
-test("the group preview tracks the cursor after panning", async ({ page, dm }) => {
+test("a single node cannot be grouped", async ({ page, dm }) => {
   await openCanvas(page, dm);
-  await pan(page, -260, 130);
+  await selectNode(page, MEMBERS[0]);
 
-  const { preview, committed, cursor } = await drawGroup(
-    page,
-    { x: 340, y: 190 },
-    { x: 690, y: 470 },
-  );
-  expectSameBox(preview, cursor, "preview vs cursor after pan");
-  expectSameBox(preview, committed, "preview vs committed group after pan");
+  // A group of one is a node with decoration, so the affordance stays hidden.
+  await expect(page.locator(".canvas__group-btn")).toHaveCount(0);
 });
 
-test("the group preview tracks the cursor when zoomed out", async ({ page, dm }) => {
+test("grouping wraps exactly the selected nodes", async ({ page, dm }) => {
   await openCanvas(page, dm);
-  await pan(page, 180, -90);
-  await zoomOut(page, 3);
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
 
-  const { preview, committed, cursor } = await drawGroup(
-    page,
-    { x: 340, y: 190 },
-    { x: 690, y: 470 },
-  );
-  expectSameBox(preview, cursor, "preview vs cursor when zoomed");
-  expectSameBox(preview, committed, "preview vs committed group when zoomed");
+  const group = page.locator(".group");
+  await expect(group).toHaveCount(1);
+  await expect(page.locator(".group__count")).toHaveText("3");
+
+  // The outline is derived from the members, so it must contain all of them
+  // and nothing that was left out.
+  const outline = await boxOf(page, ".group");
+  for (const title of MEMBERS) {
+    const n = await nodeBox(page, title);
+    expect(n.x, `${title} sits left of the group`).toBeGreaterThanOrEqual(outline.x - 1);
+    expect(n.y, `${title} sits above the group`).toBeGreaterThanOrEqual(outline.y - 1);
+    expect(n.x + n.width).toBeLessThanOrEqual(outline.x + outline.width + 1);
+    expect(n.y + n.height).toBeLessThanOrEqual(outline.y + outline.height + 1);
+  }
+
+  const excluded = await nodeBox(page, "What should we do about caching strategy?");
+  const insideHorizontally =
+    excluded.x >= outline.x && excluded.x + excluded.width <= outline.x + outline.width;
+  const insideVertically =
+    excluded.y >= outline.y && excluded.y + excluded.height <= outline.y + outline.height;
+  expect(
+    insideHorizontally && insideVertically,
+    "a node that was not selected ended up inside the group",
+  ).toBe(false);
 });
 
-test("the preview outline stays visible when zoomed far out", async ({ page, dm }) => {
+/** The behaviour the whole rework exists for. */
+test("dragging the group moves every member with it", async ({ page, dm }) => {
   await openCanvas(page, dm);
-  await zoomOut(page, 6);
-  await page.locator(".canvas__group-btn").click();
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+  await expect(page.locator(".group")).toHaveCount(1);
 
-  await page.mouse.move(400, 250);
+  const before: Record<string, Box> = {};
+  for (const title of MEMBERS) before[title] = await nodeBox(page, title);
+  const outlineBefore = await boxOf(page, ".group");
+
+  // Grab the outline somewhere that is not on top of a node.
+  const grabX = outlineBefore.x + 14;
+  const grabY = outlineBefore.y + outlineBefore.height - 14;
+  const delta = { x: 150, y: -90 };
+
+  await page.mouse.move(grabX, grabY);
   await page.mouse.down();
-  await page.mouse.move(650, 430, { steps: 6 });
-
-  // Inside the viewport transform everything scales, so a fixed border becomes
-  // a hairline when zoomed out — invisible exactly when the feedback matters.
-  const borderPx = await page
-    .locator(".group-preview")
-    .evaluate((el) => parseFloat(getComputedStyle(el).borderTopWidth) *
-      (el.closest(".react-flow__viewport") as HTMLElement | null
-        ? new DOMMatrix(getComputedStyle(el.closest(".react-flow__viewport") as HTMLElement).transform).a
-        : 1));
-
+  await page.mouse.move(grabX + delta.x / 2, grabY + delta.y / 2, { steps: 6 });
+  await page.mouse.move(grabX + delta.x, grabY + delta.y, { steps: 6 });
   await page.mouse.up();
-  expect(borderPx, "the rubber band outline is too faint to see").toBeGreaterThan(0.7);
+  await page.waitForTimeout(400);
+
+  for (const title of MEMBERS) {
+    const now = await nodeBox(page, title);
+    expect(
+      Math.abs(now.x - (before[title].x + delta.x)),
+      `${title} did not move with the group horizontally`,
+    ).toBeLessThan(4);
+    expect(
+      Math.abs(now.y - (before[title].y + delta.y)),
+      `${title} did not move with the group vertically`,
+    ).toBeLessThan(4);
+  }
+
+  // And the outline stayed wrapped around them rather than sliding off.
+  const outlineAfter = await boxOf(page, ".group");
+  expect(Math.abs(outlineAfter.x - (outlineBefore.x + delta.x))).toBeLessThan(4);
+  expect(Math.abs(outlineAfter.y - (outlineBefore.y + delta.y))).toBeLessThan(4);
+  expect(Math.abs(outlineAfter.width - outlineBefore.width)).toBeLessThan(2);
 });
 
-test("a group survives a reload and can be removed", async ({ page, dm }) => {
+test("a group move is persisted", async ({ page, dm }) => {
   await openCanvas(page, dm);
-  await drawGroup(page, { x: 340, y: 190 }, { x: 690, y: 470 });
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+
+  // Compared in flow coordinates via the API, not in screen pixels: a reload
+  // runs fitView, which changes the viewport transform and would make screen
+  // positions incomparable for reasons that have nothing to do with saving.
+  const storedX = async () => {
+    const maps = await (await page.request.get(`${dm.url}/api/maps`)).json();
+    const graph = await (
+      await page.request.get(`${dm.url}/api/maps/${maps.maps[0].id}/graph`)
+    ).json();
+    const node = graph.nodes.find((n: { title: string }) => n.title === MEMBERS[0]);
+    return node.placement.x as number;
+  };
+
+  const before = await storedX();
+
+  const outline = await boxOf(page, ".group");
+  await page.mouse.move(outline.x + 14, outline.y + outline.height - 14);
+  await page.mouse.down();
+  await page.mouse.move(outline.x + 74, outline.y + outline.height - 14, { steps: 6 });
+  await page.mouse.move(outline.x + 134, outline.y + outline.height - 14, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+
+  const after = await storedX();
+  expect(after - before, "the drag was not written to the server").toBeGreaterThan(80);
+
+  // And it is still there after a reload.
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.locator(".group")).toHaveCount(1);
+  expect(await storedX()).toBeCloseTo(after, 0);
+});
+
+test("moving one member restretches the outline", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+
+  const outlineBefore = await boxOf(page, ".group");
+  const member = page.locator(".node", { hasText: MEMBERS[2] }).first();
+  const start = await member.boundingBox();
+
+  // Drag one member well clear of the others. Bounds are derived, so the
+  // outline has to grow to keep containing it.
+  await page.mouse.move(start!.x + start!.width / 2, start!.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(start!.x + start!.width / 2 + 220, start!.y + 20, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+
+  const outlineAfter = await boxOf(page, ".group");
+  expect(
+    outlineAfter.width,
+    "the outline did not follow the member that moved",
+  ).toBeGreaterThan(outlineBefore.width + 100);
+});
+
+test("ungrouping leaves the nodes exactly where they are", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+  await expect(page.locator(".group")).toHaveCount(1);
+
+  const before = await nodeBox(page, MEMBERS[0]);
+  const nodeCount = await page.locator(".node").count();
+
+  await page.locator(".group__delete").click();
+  await expect(page.locator(".group")).toHaveCount(0);
+
+  // The nodes are the content; the group was only an arrangement of them.
+  await expect(page.locator(".node")).toHaveCount(nodeCount);
+  const after = await nodeBox(page, MEMBERS[0]);
+  expect(Math.abs(after.x - before.x)).toBeLessThan(2);
+  expect(Math.abs(after.y - before.y)).toBeLessThan(2);
+});
+
+test("the group badge selects its members", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+
+  await page.locator(".node").first().click(); // clear the selection
+  await page.locator(".group__select").click();
+
+  await expect(page.locator(".node.is-selected")).toHaveCount(MEMBERS.length);
+});
+
+test("grouping is undoable and leaves the nodes behind", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  const nodeCount = await page.locator(".node").count();
+
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+  await expect(page.locator(".group")).toHaveCount(1);
+
+  await page.keyboard.press("Control+z");
+  await expect(page.locator(".group")).toHaveCount(0);
+  // Undoing a grouping must not take the grouped nodes with it.
+  await expect(page.locator(".node")).toHaveCount(nodeCount);
+});
+
+test("a group survives a reload with its membership", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+  await expect(page.locator(".group")).toHaveCount(1);
 
   await page.reload({ waitUntil: "networkidle" });
   await expect(page.locator(".group")).toHaveCount(1);
-
-  // Deleting a grouping must not take its member nodes with it: groups are
-  // purely spatial and carry no IBIS meaning.
-  const before = await page.locator(".node").count();
-  await page.locator(".group__delete").click();
-  await expect(page.locator(".group")).toHaveCount(0);
-  await expect(page.locator(".node")).toHaveCount(before);
+  await expect(page.locator(".group__count")).toHaveText("3");
 });

@@ -202,29 +202,29 @@ export const FeatureWalkthroughs: React.FC = () => {
           <div className="grid-2" style={{ alignItems: 'center' }}>
             <div>
               <h3 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '1rem' }}>
-                Spatial Group Boxes: Visual Clustering Without Graph Pollution
+                Groups That Actually Hold Their Nodes
               </h3>
               <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.7 }}>
-                Group boxes are resizable bounding containers drawn around clusters of nodes. They allow facilitators and teams to group ideas by theme, team owner, or "parking lot" areas without corrupting the decision graph.
+                Shift-drag a box or shift-click to select several nodes, then press <kbd className="kbd">g</kbd>. The selection becomes a group that moves as one — drag the outline and every member goes with it.
               </p>
 
               <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.875rem', marginBottom: '1.5rem' }}>
                 <li style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                   <CheckCircle style={{ width: '1.25rem', height: '1.25rem', color: 'var(--ibis-pro)', flexShrink: 0, marginTop: '0.15rem' }} />
                   <div>
-                    <strong style={{ color: '#fff' }}>Purely Spatial (No IBIS Pollution):</strong> Groups carry zero IBIS grammar weight and create no edges. Encoding spatial clusters as relationships would pollute the clean argument tree that AI agents and markdown exporters rely on.
+                    <strong style={{ color: '#fff' }}>Bounds Derived From Membership:</strong> The outline has no geometry of its own — it is computed from where the members are. Move one member and it restretches; the box and the nodes can never drift apart. There is nothing to resize, because membership <em>is</em> the bounds.
                   </div>
                 </li>
                 <li style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                   <CheckCircle style={{ width: '1.25rem', height: '1.25rem', color: 'var(--ibis-pro)', flexShrink: 0, marginTop: '0.15rem' }} />
                   <div>
-                    <strong style={{ color: '#fff' }}>Double-Click Label Editing:</strong> Double-click the group title (e.g. "Cluster", "Architecture Tradeoffs", "Parking Lot") to rename. Press <code>Enter</code> to commit.
+                    <strong style={{ color: '#fff' }}>Purely Spatial (No IBIS Pollution):</strong> Grouping creates no edges and carries no grammar weight. Teams cluster by theme, owner, or "parking lot"; encoding that as relationships would corrupt the argument tree that exports and AI agents rely on.
                   </div>
                 </li>
                 <li style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                   <CheckCircle style={{ width: '1.25rem', height: '1.25rem', color: 'var(--ibis-pro)', flexShrink: 0, marginTop: '0.15rem' }} />
                   <div>
-                    <strong style={{ color: '#fff' }}>Non-Destructive Deletion:</strong> Clicking <code>×</code> on a group box removes the visual container, leaving all enclosed IBIS nodes and edges completely untouched.
+                    <strong style={{ color: '#fff' }}>Non-Destructive Ungrouping:</strong> Clicking <code>×</code> dissolves the arrangement and leaves every node exactly where it sits. The nodes are the content; the group is only a way of handling them together.
                   </div>
                 </li>
               </ul>

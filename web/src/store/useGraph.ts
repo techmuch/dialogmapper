@@ -32,6 +32,11 @@ interface GraphState {
 
   /** The node the keyboard acts on. Exactly one, always. */
   selectedId: string | null;
+  /**
+   * Additional nodes selected alongside it, for grouping and bulk moves.
+   * selectedId is always the anchor and is never in this set.
+   */
+  multiSelected: Set<string>;
   /** Non-null while a node's title is being typed inline. */
   editingId: string | null;
   loading: boolean;
@@ -50,6 +55,12 @@ interface GraphState {
   reload: () => Promise<void>;
 
   select: (id: string | null) => void;
+  /** Replaces the whole selection, e.g. after a marquee drag. */
+  setSelection: (ids: string[]) => void;
+  /** Adds or removes one node from the selection (shift-click). */
+  toggleSelected: (id: string) => void;
+  /** Every currently selected node, anchor first. */
+  selectedIds: () => string[];
   beginEdit: (id: string) => void;
   commitTitle: (id: string, title: string) => Promise<void>;
   cancelEdit: () => void;
@@ -67,8 +78,15 @@ interface GraphState {
   removeFromMap: (nodeId: string) => Promise<void>;
   deleteEverywhere: (nodeId: string) => Promise<void>;
   insertExisting: (nodeId: string) => Promise<void>;
-  saveGroup: (g: Partial<DMGroup>) => Promise<void>;
+  /** Gathers the current selection into a group. */
+  groupSelection: () => Promise<void>;
+  /** Dissolves a group, leaving its nodes where they are. */
   deleteGroup: (id: string) => Promise<void>;
+  renameGroup: (id: string, title: string) => Promise<void>;
+  /** Shifts a group's members locally, during a drag. */
+  shiftGroupLocal: (groupId: string, dx: number, dy: number) => void;
+  /** Persists a finished group drag as one offset. */
+  commitGroupMove: (groupId: string, dx: number, dy: number) => Promise<void>;
   runAutoLayout: (persist?: boolean) => Promise<void>;
 
   undo: () => Promise<void>;
@@ -95,6 +113,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   groups: {},
   grammar: null,
   selectedId: null,
+  multiSelected: new Set<string>(),
   editingId: null,
   loading: true,
   connected: false,
@@ -154,7 +173,40 @@ export const useGraph = create<GraphState>((set, get) => ({
     if (id) await get().openMap(id);
   },
 
-  select: (id) => set({ selectedId: id, editingId: null }),
+  select: (id) => set({ selectedId: id, multiSelected: new Set(), editingId: null }),
+
+  setSelection: (ids) =>
+    set({
+      selectedId: ids[0] ?? null,
+      multiSelected: new Set(ids.slice(1)),
+      editingId: null,
+    }),
+
+  toggleSelected: (id) =>
+    set((s) => {
+      if (s.selectedId === id) {
+        // Deselecting the anchor promotes one of the others so the keyboard
+        // always has something to act on.
+        const rest = [...s.multiSelected];
+        return {
+          selectedId: rest[0] ?? null,
+          multiSelected: new Set(rest.slice(1)),
+          editingId: null,
+        };
+      }
+      const next = new Set(s.multiSelected);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return s.selectedId
+        ? { multiSelected: next, editingId: null }
+        : { selectedId: id, multiSelected: new Set(), editingId: null };
+    }),
+
+  selectedIds: () => {
+    const { selectedId, multiSelected } = get();
+    return selectedId ? [selectedId, ...multiSelected] : [...multiSelected];
+  },
+
   beginEdit: (id) => set({ selectedId: id, editingId: id }),
   cancelEdit: () => set({ editingId: null }),
 
@@ -334,12 +386,21 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
-  saveGroup: async (g) => {
+  groupSelection: async () => {
     const { mapId } = get();
+    const ids = get().selectedIds();
     if (!mapId) return;
+    if (ids.length < 2) {
+      get().toast("Select two or more nodes to group them — shift-click, or shift-drag a box.", "info");
+      return;
+    }
     try {
-      const saved = await api.saveGroup({ ...g, mapId });
+      const saved = await api.createGroup(mapId, ids);
       set((s) => ({ groups: { ...s.groups, [saved.id]: saved } }));
+      // Refetch: grouping can pull nodes out of another group, which changes
+      // that group's membership too.
+      await get().reload();
+      get().toast(`Grouped ${ids.length} nodes`, "info");
     } catch (err) {
       get().toast(describe(err));
     }
@@ -354,6 +415,57 @@ export const useGraph = create<GraphState>((set, get) => ({
       return { groups: next };
     });
     await api.deleteGroup(id, mapId).catch((err) => get().toast(describe(err)));
+  },
+
+  renameGroup: async (id, title) => {
+    try {
+      const saved = await api.renameGroup(id, title);
+      set((s) => ({ groups: { ...s.groups, [saved.id]: saved } }));
+    } catch (err) {
+      get().toast(describe(err));
+    }
+  },
+
+  /**
+   * Shifts a group's members locally, without touching the server.
+   *
+   * Called on every frame of a drag. The outline is derived from the members,
+   * so moving them is what makes the box follow the cursor — the box is never
+   * moved directly.
+   */
+  shiftGroupLocal: (groupId, dx, dy) => {
+    const group = get().groups[groupId];
+    if (!group) return;
+    set((s) => {
+      const nodes = { ...s.nodes };
+      for (const id of group.nodeIds) {
+        const n = nodes[id];
+        if (!n?.placement || n.placement.x == null || n.placement.y == null) continue;
+        nodes[id] = {
+          ...n,
+          placement: { ...n.placement, x: n.placement.x + dx, y: n.placement.y + dy },
+        };
+      }
+      return { nodes };
+    });
+  },
+
+  /**
+   * Persists a completed group drag as a single offset.
+   *
+   * One write per gesture rather than one per frame, which also means one
+   * undo entry for the whole drag.
+   */
+  commitGroupMove: async (groupId, dx, dy) => {
+    const { mapId } = get();
+    if (!mapId || (dx === 0 && dy === 0)) return;
+    try {
+      await api.moveGroup(mapId, groupId, dx, dy);
+    } catch (err) {
+      get().toast(describe(err));
+      // The local positions are now a guess; take the server's word for it.
+      await get().reload();
+    }
   },
 
   runAutoLayout: async (persist = true) => {

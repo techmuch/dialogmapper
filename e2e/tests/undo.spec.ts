@@ -92,6 +92,10 @@ test("a typed title undoes in one keystroke, not one per character", async ({
 
   await selectNode(page, "Add a read-through cache");
   await page.keyboard.press("q");
+  // Wait for the editor before committing: the node is created over the
+  // network, and under load the Enter would otherwise arrive first and be
+  // read as a canvas shortcut.
+  await expect(page.locator(".node__input")).toBeFocused();
   await page.keyboard.press("Enter"); // commit the placeholder
 
   const created = page.locator(".node.is-selected");

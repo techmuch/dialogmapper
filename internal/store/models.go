@@ -143,17 +143,19 @@ type Edge struct {
 	CreatedAt    string            `json:"createdAt"`
 }
 
-// Group is a bounding box drawn around a cluster of nodes on one map.
+// Group is a set of nodes on one map that move together.
+//
+// There is no geometry here on purpose. The outline a user sees is derived
+// from where the members are, so it cannot drift out of step with them, and a
+// group with no members has nothing to draw and is removed.
 type Group struct {
-	ID        string  `json:"id"`
-	MapID     string  `json:"mapId"`
-	Title     string  `json:"title"`
-	Color     string  `json:"color"`
-	X         float64 `json:"x"`
-	Y         float64 `json:"y"`
-	W         float64 `json:"w"`
-	H         float64 `json:"h"`
-	CreatedAt string  `json:"createdAt"`
+	ID        string `json:"id"`
+	MapID     string `json:"mapId"`
+	Title     string `json:"title"`
+	Color     string `json:"color"`
+	CreatedAt string `json:"createdAt"`
+	// NodeIDs is the membership, in the order the nodes were added.
+	NodeIDs []string `json:"nodeIds"`
 }
 
 // Graph is the full renderable state of one map.

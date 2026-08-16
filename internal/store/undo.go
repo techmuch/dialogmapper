@@ -40,6 +40,7 @@ const (
 	ActionDeleteEdge  UndoAction = "edge.delete"
 	ActionSaveGroup   UndoAction = "group.save"
 	ActionDeleteGroup UndoAction = "group.delete"
+	ActionMoveGroup   UndoAction = "group.move"
 )
 
 // CLIActor is the actor recorded for changes made by command-line runs, so a
@@ -302,16 +303,10 @@ func applyInverseTx(tx *sql.Tx, action UndoAction, payload string, redo bool) er
 			snap.Node.Type, snap.Node.Title, content, nowISO(), snap.Node.ID)
 		return err
 
-	case ActionMoveNode:
-		for _, p := range snap.Placements {
-			if _, err := tx.Exec(
-				`UPDATE map_nodes SET x = ?, y = ?, collapsed = ?, group_id = ?
-				 WHERE map_id = ? AND node_id = ?`,
-				p.X, p.Y, boolToInt(p.Collapsed), p.GroupID, p.MapID, p.NodeID); err != nil {
-				return err
-			}
-		}
-		return nil
+	case ActionMoveNode, ActionMoveGroup:
+		// Moving a group is moving its members, so both directions are the
+		// same write: restore the recorded placements.
+		return restorePlacementStateTx(tx, snap.Placements)
 
 	case ActionCreateEdge:
 		if redo {
@@ -326,17 +321,26 @@ func applyInverseTx(tx *sql.Tx, action UndoAction, payload string, redo bool) er
 		return restoreEdgesTx(tx, snap.Edges)
 
 	case ActionSaveGroup:
-		// A group save records the previous geometry, or nothing when the
-		// group was newly created — in which case reversing means removing it.
+		// Groups carry no geometry, so reversing one is entirely about
+		// membership: put every affected node back in whatever group it was in
+		// before, and remove the group itself if it did not exist then.
+		//
+		// An empty CreatedAt is the marker for "this group did not exist".
 		if len(snap.Groups) == 0 {
 			return errors.New("journal entry has no group state")
 		}
 		g := snap.Groups[0]
 		if g.CreatedAt == "" {
+			if err := restorePlacementStateTx(tx, snap.Placements); err != nil {
+				return err
+			}
 			_, err := tx.Exec(`DELETE FROM groups WHERE id = ?`, g.ID)
 			return err
 		}
-		return upsertGroupTx(tx, g)
+		if err := upsertGroupTx(tx, g); err != nil {
+			return err
+		}
+		return restorePlacementStateTx(tx, snap.Placements)
 
 	case ActionDeleteGroup:
 		if redo {
@@ -351,9 +355,25 @@ func applyInverseTx(tx *sql.Tx, action UndoAction, payload string, redo bool) er
 				return err
 			}
 		}
-		return nil
+		// Membership is the group, so it comes back with it.
+		return restorePlacementStateTx(tx, snap.Placements)
 	}
 	return fmt.Errorf("cannot reverse %q", action)
+}
+
+// restorePlacementStateTx writes recorded placements back verbatim, including
+// which group each node belonged to. Used by every reversal that concerns
+// where nodes sit rather than whether they exist.
+func restorePlacementStateTx(tx *sql.Tx, placements []placement) error {
+	for _, p := range placements {
+		if _, err := tx.Exec(
+			`UPDATE map_nodes SET x = ?, y = ?, collapsed = ?, group_id = ?
+			 WHERE map_id = ? AND node_id = ?`,
+			p.X, p.Y, boolToInt(p.Collapsed), p.GroupID, p.MapID, p.NodeID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func restoreSnapshotTx(tx *sql.Tx, snap snapshot) error {
@@ -452,13 +472,11 @@ func deleteEdgesTx(tx *sql.Tx, edges []Edge) error {
 
 func upsertGroupTx(tx *sql.Tx, g Group) error {
 	_, err := tx.Exec(
-		`INSERT INTO groups (id, map_id, title, color, x, y, w, h, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO groups (id, map_id, title, color, created_at)
+		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT (id) DO UPDATE SET
-		     title = excluded.title, color = excluded.color,
-		     x = excluded.x, y = excluded.y, w = excluded.w, h = excluded.h`,
-		g.ID, g.MapID, g.Title, g.Color, g.X, g.Y, g.W, g.H,
-		orDefault(g.CreatedAt, nowISO()))
+		     title = excluded.title, color = excluded.color`,
+		g.ID, g.MapID, g.Title, g.Color, orDefault(g.CreatedAt, nowISO()))
 	return err
 }
 
@@ -544,15 +562,19 @@ func groupSnapshotTx(tx *sql.Tx, groupID string) (snapshot, error) {
 	var snap snapshot
 	var g Group
 	err := tx.QueryRow(
-		`SELECT id, map_id, title, color, x, y, w, h, created_at
-		 FROM groups WHERE id = ?`, groupID).
-		Scan(&g.ID, &g.MapID, &g.Title, &g.Color, &g.X, &g.Y, &g.W, &g.H, &g.CreatedAt)
+		`SELECT id, map_id, title, color, created_at FROM groups WHERE id = ?`, groupID).
+		Scan(&g.ID, &g.MapID, &g.Title, &g.Color, &g.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return snap, nil
 	}
 	if err != nil {
 		return snap, err
 	}
+	members, err := groupMembersTx(tx, groupID)
+	if err != nil {
+		return snap, err
+	}
+	g.NodeIDs = members
 	snap.Groups = []Group{g}
 	return snap, nil
 }

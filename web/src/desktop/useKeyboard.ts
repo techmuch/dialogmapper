@@ -186,6 +186,25 @@ export function useKeyboard({ flow, visibleNodes }: Options) {
           return;
         }
 
+        case "g":
+        case "G": {
+          ev.preventDefault();
+          // Grouping acts on the selection, so it needs at least two nodes.
+          // groupSelection says so itself when there are fewer.
+          void g.groupSelection();
+          return;
+        }
+
+        case "a":
+        case "A": {
+          ev.preventDefault();
+          // Select everything currently visible, which respects the filter —
+          // "select all" meaning "all of what I can see" is what a filtered
+          // view implies.
+          g.setSelection(visibleNodes.map((n) => n.id));
+          return;
+        }
+
         case "Tab": {
           ev.preventDefault();
           ui.toggleSidebar();

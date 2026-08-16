@@ -421,19 +421,26 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"groups": gs})
 
-	case http.MethodPost, http.MethodPut:
-		var g store.Group
-		if err := decode(r, &g); err != nil {
+	case http.MethodPost:
+		// Grouping is an assertion about the current selection, so the request
+		// is the node list rather than a rectangle.
+		var in struct {
+			MapID   string   `json:"mapId"`
+			Title   string   `json:"title"`
+			Color   string   `json:"color"`
+			NodeIDs []string `json:"nodeIds"`
+		}
+		if err := decode(r, &in); err != nil {
 			writeErr(w, err)
 			return
 		}
-		saved, err := s.actorStore(r).UpsertGroup(g)
+		saved, err := s.actorStore(r).CreateGroup(in.MapID, in.Title, in.Color, in.NodeIDs)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
 		s.publish(r, Event{Type: "group.saved", MapID: saved.MapID, Payload: saved})
-		writeJSON(w, http.StatusOK, saved)
+		writeJSON(w, http.StatusCreated, saved)
 
 	default:
 		writeErr(w, errMethod)
@@ -442,18 +449,99 @@ func (s *Server) handleGroups(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGroupByID(w http.ResponseWriter, r *http.Request) {
 	parts := pathTail(r, "groups")
-	if len(parts) == 0 || r.Method != http.MethodDelete {
+	if len(parts) == 0 {
+		writeErr(w, fmt.Errorf("group id is required"))
+		return
+	}
+	id := parts[0]
+
+	// /api/groups/{id}/move — drag end for a whole group.
+	if len(parts) > 1 && parts[1] == "move" {
+		if r.Method != http.MethodPost {
+			writeErr(w, errMethod)
+			return
+		}
+		var in struct {
+			MapID string  `json:"mapId"`
+			DX    float64 `json:"dx"`
+			DY    float64 `json:"dy"`
+		}
+		if err := decode(r, &in); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if _, err := s.actorStore(r).MoveGroup(in.MapID, id, in.DX, in.DY); err != nil {
+			writeErr(w, err)
+			return
+		}
+		// A group move changes many node positions at once, so clients refetch
+		// rather than trying to patch each one from a delta.
+		s.publish(r, Event{Type: "graph.invalidated", MapID: in.MapID,
+			Payload: map[string]any{"reason": "a group was moved"}})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
+
+	// /api/groups/{id}/members — add to or remove from a group.
+	if len(parts) > 1 && parts[1] == "members" {
+		if r.Method != http.MethodPut {
+			writeErr(w, errMethod)
+			return
+		}
+		var in struct {
+			MapID   string   `json:"mapId"`
+			NodeIDs []string `json:"nodeIds"`
+		}
+		if err := decode(r, &in); err != nil {
+			writeErr(w, err)
+			return
+		}
+		saved, err := s.actorStore(r).SetGroupMembers(in.MapID, id, in.NodeIDs)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if saved == nil {
+			// Emptying a group dissolves it rather than leaving an invisible
+			// row behind.
+			s.publish(r, Event{Type: "group.deleted", MapID: in.MapID,
+				Payload: map[string]any{"groupId": id}})
+			writeJSON(w, http.StatusNoContent, nil)
+			return
+		}
+		s.publish(r, Event{Type: "group.saved", MapID: saved.MapID, Payload: saved})
+		writeJSON(w, http.StatusOK, saved)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPatch:
+		var in struct{ Title, Color string }
+		if err := decode(r, &in); err != nil {
+			writeErr(w, err)
+			return
+		}
+		saved, err := s.actorStore(r).UpdateGroup(id, in.Title, in.Color)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		s.publish(r, Event{Type: "group.saved", MapID: saved.MapID, Payload: saved})
+		writeJSON(w, http.StatusOK, saved)
+
+	case http.MethodDelete:
+		if err := s.actorStore(r).DeleteGroup(id); err != nil {
+			writeErr(w, err)
+			return
+		}
+		s.publish(r, Event{Type: "group.deleted",
+			MapID:   r.URL.Query().Get("mapId"),
+			Payload: map[string]any{"groupId": id}})
+		writeJSON(w, http.StatusNoContent, nil)
+
+	default:
 		writeErr(w, errMethod)
-		return
 	}
-	if err := s.actorStore(r).DeleteGroup(parts[0]); err != nil {
-		writeErr(w, err)
-		return
-	}
-	s.publish(r, Event{Type: "group.deleted",
-		MapID:   r.URL.Query().Get("mapId"),
-		Payload: map[string]any{"groupId": parts[0]}})
-	writeJSON(w, http.StatusNoContent, nil)
 }
 
 // handleSearch backs both the mobile search bar and the canvas "insert

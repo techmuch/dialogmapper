@@ -255,29 +255,46 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 
 /* --- groups ------------------------------------------------------------- */
 
+/* The outline is sized by its members, so it has no handles of its own.
+   Dragging anywhere on it moves the nodes inside. */
 .group {
   width: 100%;
   height: 100%;
   border: 1.5px dashed #3a4553;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, .015);
+  border-radius: 12px;
+  background: rgba(122, 162, 247, .04);
+  cursor: grab;
+  transition: background .12s, border-color .12s;
+  /* React Flow sets pointer-events:none on nodes that are neither draggable
+     nor selectable, and this one is neither — it is dragged by its own pointer
+     handlers. Re-enabling here is what lets those handlers see the event. */
+  pointer-events: auto;
 }
-.group.is-selected { border-color: var(--accent); }
+.group:hover { background: rgba(122, 162, 247, .08); border-color: #4a5768; }
+.group.is-dragging { cursor: grabbing; border-color: var(--accent); background: rgba(122, 162, 247, .1); }
+
 .group__label {
   position: absolute;
-  top: -11px; left: 10px;
-  background: var(--bg);
-  padding: 0 6px;
+  top: 6px; left: 12px;
   font-size: 11px;
   color: var(--fg-dim);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+}
+.group__count {
+  background: var(--bg-3);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 10px;
 }
 .group__input { background: var(--bg-3); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 4px; font-size: 11px; }
-.group__delete { background: none; border: none; color: var(--fg-dim); cursor: pointer; }
-.group__resize-line { border-color: var(--accent); }
-.group__resize-handle { background: var(--accent); border: none; width: 6px; height: 6px; }
+.group__select,
+.group__delete {
+  background: none; border: none; color: var(--fg-dim); cursor: pointer;
+  padding: 0 2px; line-height: 1;
+}
+.group__select:hover, .group__delete:hover { color: var(--fg); }
 
 /* --- sidebar ------------------------------------------------------------ */
 

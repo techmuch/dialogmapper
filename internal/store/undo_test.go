@@ -455,37 +455,218 @@ func TestUndoEdgeCreateAndDelete(t *testing.T) {
 	}
 }
 
-func TestUndoGroupCreateAndMove(t *testing.T) {
-	s := newTestStore(t)
-	as := s.As(alice)
-	m, _ := as.CreateMap("M", "")
-
-	g, err := as.UpsertGroup(Group{MapID: m.ID, Title: "Cluster", X: 0, Y: 0, W: 200, H: 200})
+// groupOfThree builds a small map with three placed nodes, for the group tests.
+func groupOfThree(t *testing.T, as *Store) (mapID string, ids []string) {
+	t.Helper()
+	m, err := as.CreateMap("M", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := as.Undo(alice, m.ID); err != nil {
+	for i, title := range []string{"A", "B", "C"} {
+		n, _, err := as.CreateNode(NewNodeInput{
+			Type: ibis.Note, Title: title, MapID: m.ID,
+			X: f(float64(i) * 100), Y: f(float64(i) * 50),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, n.ID)
+	}
+	return m.ID, ids
+}
+
+func TestUndoGroupCreation(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	mapID, ids := groupOfThree(t, as)
+
+	g, err := as.CreateGroup(mapID, "Cluster", "", ids)
+	if err != nil {
 		t.Fatal(err)
 	}
-	groups, _ := s.GroupsFor(m.ID)
-	if len(groups) != 0 {
-		t.Error("undo did not remove the new group")
+	if len(g.NodeIDs) != 3 {
+		t.Fatalf("group has %d members, want 3", len(g.NodeIDs))
 	}
 
-	if _, err := as.Redo(alice, m.ID); err != nil {
+	if _, err := as.Undo(alice, mapID); err != nil {
 		t.Fatal(err)
 	}
-	moved := *g
-	moved.X = 500
-	if _, err := as.UpsertGroup(moved); err != nil {
+	groups, _ := s.GroupsFor(mapID)
+	if len(groups) != 0 {
+		t.Error("undo did not remove the group")
+	}
+	// The nodes themselves must survive — a group is an arrangement of nodes,
+	// not a container that owns their existence.
+	if nodeCount(t, s, mapID) != 3 {
+		t.Errorf("undo took the nodes with it: %d left", nodeCount(t, s, mapID))
+	}
+
+	if _, err := as.Redo(alice, mapID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := as.Undo(alice, m.ID); err != nil {
+	groups, _ = s.GroupsFor(mapID)
+	if len(groups) != 1 || len(groups[0].NodeIDs) != 3 {
+		t.Errorf("redo did not restore the membership: %+v", groups)
+	}
+}
+
+func TestGroupNeedsAtLeastTwoNodes(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	mapID, ids := groupOfThree(t, as)
+
+	// A group of one is a node with decoration; a group of none has no outline.
+	if _, err := as.CreateGroup(mapID, "", "", ids[:1]); err == nil {
+		t.Error("grouping a single node should be refused")
+	}
+	if _, err := as.CreateGroup(mapID, "", "", nil); err == nil {
+		t.Error("grouping nothing should be refused")
+	}
+}
+
+// TestMoveGroupMovesItsMembers is the behaviour that makes a group a group.
+func TestMoveGroupMovesItsMembers(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	mapID, ids := groupOfThree(t, as)
+
+	g, err := as.CreateGroup(mapID, "Cluster", "", ids)
+	if err != nil {
 		t.Fatal(err)
 	}
-	groups, _ = s.GroupsFor(m.ID)
-	if len(groups) != 1 || groups[0].X != 0 {
-		t.Errorf("undo did not restore the previous geometry: %+v", groups)
+
+	before := map[string][2]float64{}
+	for _, id := range ids {
+		n, _ := s.GetNode(id, mapID)
+		before[id] = [2]float64{*n.Placement.X, *n.Placement.Y}
+	}
+
+	if _, err := as.MoveGroup(mapID, g.ID, 40, -25); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range ids {
+		n, _ := s.GetNode(id, mapID)
+		want := [2]float64{before[id][0] + 40, before[id][1] - 25}
+		if *n.Placement.X != want[0] || *n.Placement.Y != want[1] {
+			t.Errorf("node %s at (%v,%v), want (%v,%v) — members did not move with the group",
+				id, *n.Placement.X, *n.Placement.Y, want[0], want[1])
+		}
+	}
+
+	// And one undo puts the whole arrangement back.
+	if _, err := as.Undo(alice, mapID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		n, _ := s.GetNode(id, mapID)
+		if *n.Placement.X != before[id][0] || *n.Placement.Y != before[id][1] {
+			t.Errorf("node %s not restored: (%v,%v)", id, *n.Placement.X, *n.Placement.Y)
+		}
+	}
+}
+
+func TestConsecutiveGroupMovesCollapse(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	mapID, ids := groupOfThree(t, as)
+	g, _ := as.CreateGroup(mapID, "Cluster", "", ids)
+
+	depthBefore, _, _ := s.UndoDepth(alice, mapID)
+	for i := 0; i < 5; i++ {
+		if _, err := as.MoveGroup(mapID, g.ID, 10, 10); err != nil {
+			t.Fatal(err)
+		}
+	}
+	depthAfter, _, _ := s.UndoDepth(alice, mapID)
+
+	// Dragging is one gesture however many frames it took.
+	if depthAfter != depthBefore+1 {
+		t.Errorf("five drag steps added %d undo entries, want 1", depthAfter-depthBefore)
+	}
+
+	if _, err := as.Undo(alice, mapID); err != nil {
+		t.Fatal(err)
+	}
+	n, _ := s.GetNode(ids[0], mapID)
+	if *n.Placement.X != 0 {
+		t.Errorf("one undo should reverse the whole drag, got x=%v", *n.Placement.X)
+	}
+}
+
+func TestUngroupingLeavesTheNodes(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	mapID, ids := groupOfThree(t, as)
+	g, _ := as.CreateGroup(mapID, "Cluster", "", ids)
+
+	if err := as.DeleteGroup(g.ID); err != nil {
+		t.Fatal(err)
+	}
+	if nodeCount(t, s, mapID) != 3 {
+		t.Errorf("ungrouping deleted nodes: %d left", nodeCount(t, s, mapID))
+	}
+	groups, _ := s.GroupsFor(mapID)
+	if len(groups) != 0 {
+		t.Error("group still present after delete")
+	}
+
+	// Undo restores both the group and who was in it.
+	if _, err := as.Undo(alice, mapID); err != nil {
+		t.Fatal(err)
+	}
+	groups, _ = s.GroupsFor(mapID)
+	if len(groups) != 1 || len(groups[0].NodeIDs) != 3 {
+		t.Errorf("undo did not restore the membership: %+v", groups)
+	}
+}
+
+func TestEmptyingAGroupDissolvesIt(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	mapID, ids := groupOfThree(t, as)
+	g, _ := as.CreateGroup(mapID, "Cluster", "", ids)
+
+	// Removing members down to none leaves nothing to draw, so the group goes
+	// rather than lingering as an invisible row.
+	left, err := as.SetGroupMembers(mapID, g.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if left != nil {
+		t.Errorf("expected the group to dissolve, got %+v", left)
+	}
+	groups, _ := s.GroupsFor(mapID)
+	if len(groups) != 0 {
+		t.Errorf("empty group survived: %+v", groups)
+	}
+	if nodeCount(t, s, mapID) != 3 {
+		t.Error("dissolving a group must not touch its nodes")
+	}
+}
+
+// A node belongs to one group per map: regrouping moves it rather than
+// silently leaving it in two places.
+func TestRegroupingMovesANodeOut(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	mapID, ids := groupOfThree(t, as)
+
+	first, err := as.CreateGroup(mapID, "First", "", ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := as.CreateGroup(mapID, "Second", "", ids[1:]); err != nil {
+		t.Fatal(err)
+	}
+
+	groups, _ := s.GroupsFor(mapID)
+	byID := map[string]Group{}
+	for _, g := range groups {
+		byID[g.ID] = g
+	}
+	if got := len(byID[first.ID].NodeIDs); got != 1 {
+		t.Errorf("first group kept %d members, want 1", got)
 	}
 }
 

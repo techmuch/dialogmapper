@@ -26,9 +26,6 @@ interface UIState {
   /** Text typed into the on-canvas filter box. */
   filterQuery: string;
 
-  /** Set while drawing a bounding box, in flow coordinates. */
-  drawingGroup: { x: number; y: number; w: number; h: number } | null;
-
   toggleSidebar: (v?: boolean) => void;
   setPalette: (v: boolean) => void;
   setMapMenu: (v: boolean) => void;
@@ -40,7 +37,6 @@ interface UIState {
   toggleStatus: (s: Status) => void;
   setTagFilter: (t: string | null) => void;
   setFilterQuery: (q: string) => void;
-  setDrawingGroup: (g: UIState["drawingGroup"]) => void;
   resetFilters: () => void;
 }
 
@@ -60,7 +56,6 @@ export const useUI = create<UIState>((set, get) => ({
   statusFilter: new Set(ALL_STATUSES),
   tagFilter: null,
   filterQuery: "",
-  drawingGroup: null,
 
   toggleSidebar: (v) => set((s) => ({ sidebarOpen: v ?? !s.sidebarOpen })),
   setPalette: (v) => set({ paletteOpen: v }),
@@ -129,7 +124,6 @@ export const useUI = create<UIState>((set, get) => ({
 
   setTagFilter: (t) => set({ tagFilter: t }),
   setFilterQuery: (q) => set({ filterQuery: q }),
-  setDrawingGroup: (g) => set({ drawingGroup: g }),
 
   resetFilters: () =>
     set({

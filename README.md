@@ -63,6 +63,8 @@ needs a mouse correction afterwards.
 | `Space` | Centre on the selection, or fit the whole map |
 | `l` | Tidy up with auto-layout |
 | `/` | Search every map and insert an existing node |
+| `g` | Group the selected nodes so they move together |
+| `a` | Select everything currently visible |
 | `Ctrl/⌘ Z` | Undo — your own actions only |
 | `Ctrl/⌘ ⇧ Z` | Redo |
 | `Tab` | Toggle the details panel |
@@ -70,6 +72,22 @@ needs a mouse correction afterwards.
 `+` and `-` are forgiving: with a Question selected they attach to that
 Question's most recent Idea rather than failing, because a grammar error
 mid-sentence costs more than a sensible guess.
+
+## Groups
+
+Shift-drag a box or shift-click to select several nodes, then press `g`. The
+selected nodes become a group that moves as one: drag the outline and every
+member goes with it.
+
+The outline has no geometry of its own. It is derived from where the members
+are, so moving one member restretches it and the two can never drift apart.
+That also means there is nothing to resize — the way to change the bounds is to
+change who is in the group.
+
+A node belongs to one group per map, so regrouping moves it rather than leaving
+it in two. Ungrouping dissolves the arrangement and leaves every node exactly
+where it sits; the nodes are the content, the group is only a way of handling
+them together.
 
 ## Undo
 

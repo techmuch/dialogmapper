@@ -208,8 +208,34 @@ export const api = {
   deleteEdge: (id: string, mapId: string) =>
     request<void>(`/api/edges/${id}?mapId=${mapId}`, { method: "DELETE" }),
 
-  saveGroup: (group: Partial<DMGroup> & { mapId: string }) =>
-    request<DMGroup>("/api/groups", { method: "POST", body: json(group) }),
+  /** Gathers the given nodes into a group. The request is the selection. */
+  createGroup: (mapId: string, nodeIds: string[], title = "Cluster", color = "slate") =>
+    request<DMGroup>("/api/groups", {
+      method: "POST",
+      body: json({ mapId, nodeIds, title, color }),
+    }),
+
+  renameGroup: (id: string, title: string, color?: string) =>
+    request<DMGroup>(`/api/groups/${id}`, {
+      method: "PATCH",
+      body: json({ Title: title, Color: color ?? "" }),
+    }),
+
+  /** Shifts every member by the same offset. Sent once, on drag end. */
+  moveGroup: (mapId: string, id: string, dx: number, dy: number) =>
+    request<{ ok: boolean }>(`/api/groups/${id}/move`, {
+      method: "POST",
+      body: json({ mapId, dx, dy }),
+    }),
+
+  /** Replaces membership. An empty list dissolves the group. */
+  setGroupMembers: (mapId: string, id: string, nodeIds: string[]) =>
+    request<DMGroup | void>(`/api/groups/${id}/members`, {
+      method: "PUT",
+      body: json({ mapId, nodeIds }),
+    }),
+
+  /** Dissolves a group, leaving its nodes where they are. */
   deleteGroup: (id: string, mapId: string) =>
     request<void>(`/api/groups/${id}?mapId=${mapId}`, { method: "DELETE" }),
 

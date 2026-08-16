@@ -1103,8 +1103,83 @@ func (s *Store) DeleteEdge(id string) error {
 
 // --- groups ----------------------------------------------------------------
 
-// UpsertGroup creates or moves a bounding box on a map.
-func (s *Store) UpsertGroup(g Group) (*Group, error) {
+// CreateGroup gathers a set of nodes on a map into a group.
+//
+// A node belongs to at most one group per map, so any node already grouped is
+// moved into the new one. That is the behaviour people expect from a selection
+// tool: grouping is an assertion about the current selection, not an attempt
+// to reconcile it with whatever was there before.
+func (s *Store) CreateGroup(mapID, title, color string, nodeIDs []string) (*Group, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	if mapID == "" {
+		return nil, errors.New("mapId is required")
+	}
+	if len(nodeIDs) < 2 {
+		// A group of one is just a node with extra decoration, and a group of
+		// none has no outline to draw.
+		return nil, errors.New("select at least two nodes to group them")
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Capture where every affected node sat, including its previous group, so
+	// undo restores the earlier arrangement rather than merely deleting the
+	// new group and orphaning nodes that used to belong somewhere.
+	before, err := placementsForNodesTx(tx, mapID, nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(before) != len(nodeIDs) {
+		return nil, fmt.Errorf("some of those nodes are not on map %s", mapID)
+	}
+
+	g := Group{
+		ID: NewID("grp"), MapID: mapID, Title: title,
+		Color: orDefault(color, "slate"), CreatedAt: nowISO(),
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO groups (id, map_id, title, color, created_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		g.ID, g.MapID, g.Title, g.Color, g.CreatedAt); err != nil {
+		return nil, err
+	}
+	for _, id := range nodeIDs {
+		if _, err := tx.Exec(
+			`UPDATE map_nodes SET group_id = ? WHERE map_id = ? AND node_id = ?`,
+			g.ID, mapID, id); err != nil {
+			return nil, err
+		}
+	}
+	g.NodeIDs = append([]string{}, nodeIDs...)
+
+	after, err := placementsForNodesTx(tx, mapID, nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return nil, err
+	}
+	if err := recordTx(tx, mapID, s.actor, ActionSaveGroup,
+		fmt.Sprintf("grouped %d nodes", len(nodeIDs)),
+		snapshot{Groups: []Group{{ID: g.ID, MapID: mapID}}, Placements: before},
+		snapshot{Groups: []Group{g}, Placements: after}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+// UpdateGroup renames or recolours a group.
+func (s *Store) UpdateGroup(id, title, color string) (*Group, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
@@ -1114,54 +1189,186 @@ func (s *Store) UpsertGroup(g Group) (*Group, error) {
 	}
 	defer tx.Rollback()
 
-	// The inverse of creating a group is deleting it; the inverse of moving
-	// one is its previous geometry. A zero CreatedAt in the inverse payload is
-	// the marker for "this did not exist before".
-	var inverse snapshot
-
-	if g.ID == "" {
-		g.ID = NewID("grp")
-		g.CreatedAt = nowISO()
-		if g.Color == "" {
-			g.Color = "slate"
-		}
-		if _, err := tx.Exec(
-			`INSERT INTO groups (id, map_id, title, color, x, y, w, h, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			g.ID, g.MapID, g.Title, g.Color, g.X, g.Y, g.W, g.H, g.CreatedAt); err != nil {
-			return nil, err
-		}
-		inverse = snapshot{Groups: []Group{{ID: g.ID, MapID: g.MapID}}}
-	} else {
-		prev, err := groupSnapshotTx(tx, g.ID)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(
-			`UPDATE groups SET title = ?, color = ?, x = ?, y = ?, w = ?, h = ?
-			 WHERE id = ?`, g.Title, g.Color, g.X, g.Y, g.W, g.H, g.ID); err != nil {
-			return nil, err
-		}
-		inverse = prev
+	before, err := groupSnapshotTx(tx, id)
+	if err != nil {
+		return nil, err
 	}
-
+	if len(before.Groups) == 0 {
+		return nil, fmt.Errorf("group %s: %w", id, ErrNotFound)
+	}
+	if _, err := tx.Exec(
+		`UPDATE groups SET title = ?, color = ? WHERE id = ?`,
+		title, orDefault(color, before.Groups[0].Color), id); err != nil {
+		return nil, err
+	}
+	after, err := groupSnapshotTx(tx, id)
+	if err != nil {
+		return nil, err
+	}
 	if err := clearRedoTx(tx, s.actor); err != nil {
 		return nil, err
 	}
-	if err := recordTx(tx, g.MapID, s.actor, ActionSaveGroup, "changed a group",
-		inverse, snapshot{Groups: []Group{g}}); err != nil {
+	if err := recordTx(tx, before.Groups[0].MapID, s.actor, ActionSaveGroup,
+		"renamed a group", before, after); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &g, nil
+	return &after.Groups[0], nil
 }
 
-// GroupsFor returns every bounding box on a map.
+// MoveGroup shifts every member of a group by the same offset.
+//
+// This is what makes a group a group: the members are the thing that moves,
+// and the outline follows because it is derived from them.
+func (s *Store) MoveGroup(mapID, groupID string, dx, dy float64) ([]Placement, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	members, err := groupMembersTx(tx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if len(members) == 0 {
+		return nil, fmt.Errorf("group %s: %w", groupID, ErrNotFound)
+	}
+
+	before, err := placementsForNodesTx(tx, mapID, members)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range before {
+		// A member that was never placed has nothing to offset; the client
+		// will lay it out and it will join the group's bounds then.
+		if p.X == nil || p.Y == nil {
+			continue
+		}
+		if _, err := tx.Exec(
+			`UPDATE map_nodes SET x = ?, y = ? WHERE map_id = ? AND node_id = ?`,
+			*p.X+dx, *p.Y+dy, mapID, p.NodeID); err != nil {
+			return nil, err
+		}
+	}
+	after, err := placementsForNodesTx(tx, mapID, members)
+	if err != nil {
+		return nil, err
+	}
+
+	// Dragging a group around is one gesture however many frames it took, so
+	// consecutive moves of the same group collapse into one undo entry.
+	if merged, err := mergeGroupMoveTx(tx, s.actor, groupID, after); err != nil {
+		return nil, err
+	} else if !merged {
+		if err := clearRedoTx(tx, s.actor); err != nil {
+			return nil, err
+		}
+		if err := recordTx(tx, mapID, s.actor, ActionMoveGroup,
+			fmt.Sprintf("moved a group of %d", len(members)),
+			snapshot{Placements: before, Groups: []Group{{ID: groupID, MapID: mapID}}},
+			snapshot{Placements: after, Groups: []Group{{ID: groupID, MapID: mapID}}}); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	out := make([]Placement, 0, len(after))
+	for _, p := range after {
+		out = append(out, Placement{X: p.X, Y: p.Y, AddedAt: p.AddedAt})
+	}
+	return out, nil
+}
+
+// SetGroupMembers replaces a group's membership, deleting the group when the
+// result is empty. Used by "add to group" and "remove from group".
+func (s *Store) SetGroupMembers(mapID, groupID string, nodeIDs []string) (*Group, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	existing, err := groupMembersTx(tx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	affected := union(existing, nodeIDs)
+	before, err := placementsForNodesTx(tx, mapID, affected)
+	if err != nil {
+		return nil, err
+	}
+	snapBefore, err := groupSnapshotTx(tx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	snapBefore.Placements = before
+
+	if _, err := tx.Exec(
+		`UPDATE map_nodes SET group_id = NULL WHERE group_id = ?`, groupID); err != nil {
+		return nil, err
+	}
+	for _, id := range nodeIDs {
+		if _, err := tx.Exec(
+			`UPDATE map_nodes SET group_id = ? WHERE map_id = ? AND node_id = ?`,
+			groupID, mapID, id); err != nil {
+			return nil, err
+		}
+	}
+
+	// An empty group has no outline and no purpose, so it goes away rather
+	// than lingering as an invisible row.
+	if len(nodeIDs) == 0 {
+		if _, err := tx.Exec(`DELETE FROM groups WHERE id = ?`, groupID); err != nil {
+			return nil, err
+		}
+	}
+
+	after, err := placementsForNodesTx(tx, mapID, affected)
+	if err != nil {
+		return nil, err
+	}
+	snapAfter, err := groupSnapshotTx(tx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	snapAfter.Placements = after
+
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return nil, err
+	}
+	label := "changed a group's members"
+	if len(nodeIDs) == 0 {
+		label = "ungrouped " + fmt.Sprint(len(existing)) + " nodes"
+	}
+	if err := recordTx(tx, mapID, s.actor, ActionSaveGroup, label,
+		snapBefore, snapAfter); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+	g, err := s.groupByID(groupID)
+	return g, err
+}
+
+// GroupsFor returns every group on a map, with its membership.
 func (s *Store) GroupsFor(mapID string) ([]Group, error) {
 	rows, err := s.db.Query(
-		`SELECT id, map_id, title, color, x, y, w, h, created_at
+		`SELECT id, map_id, title, color, created_at
 		 FROM groups WHERE map_id = ? ORDER BY created_at`, mapID)
 	if err != nil {
 		return nil, err
@@ -1170,16 +1377,60 @@ func (s *Store) GroupsFor(mapID string) ([]Group, error) {
 	out := []Group{}
 	for rows.Next() {
 		var g Group
-		if err := rows.Scan(&g.ID, &g.MapID, &g.Title, &g.Color,
-			&g.X, &g.Y, &g.W, &g.H, &g.CreatedAt); err != nil {
+		if err := rows.Scan(&g.ID, &g.MapID, &g.Title, &g.Color, &g.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, g)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i := range out {
+		members, err := s.groupMembers(out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i].NodeIDs = members
+	}
+	return out, nil
+}
+
+func (s *Store) groupByID(id string) (*Group, error) {
+	var g Group
+	err := s.db.QueryRow(
+		`SELECT id, map_id, title, color, created_at FROM groups WHERE id = ?`, id).
+		Scan(&g.ID, &g.MapID, &g.Title, &g.Color, &g.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("group %s: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	g.NodeIDs, err = s.groupMembers(id)
+	return &g, err
+}
+
+func (s *Store) groupMembers(groupID string) ([]string, error) {
+	rows, err := s.db.Query(
+		`SELECT node_id FROM map_nodes WHERE group_id = ? ORDER BY added_at`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
 	return out, rows.Err()
 }
 
-// DeleteGroup removes a bounding box, leaving its member nodes in place.
+// DeleteGroup dissolves a group, leaving its member nodes exactly where they
+// are. The nodes are the content; the group is only an arrangement of them.
 func (s *Store) DeleteGroup(id string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -1197,6 +1448,17 @@ func (s *Store) DeleteGroup(id string) error {
 	if len(snap.Groups) == 0 {
 		return nil
 	}
+	members, err := groupMembersTx(tx, id)
+	if err != nil {
+		return err
+	}
+	// The membership has to be part of the snapshot or undo would bring back
+	// an empty group and quietly lose the arrangement.
+	snap.Placements, err = placementsForNodesTx(tx, snap.Groups[0].MapID, members)
+	if err != nil {
+		return err
+	}
+
 	if _, err := tx.Exec(`DELETE FROM groups WHERE id = ?`, id); err != nil {
 		return err
 	}
@@ -1204,10 +1466,94 @@ func (s *Store) DeleteGroup(id string) error {
 		return err
 	}
 	if err := recordTx(tx, snap.Groups[0].MapID, s.actor, ActionDeleteGroup,
-		"deleted a group", snap, snap); err != nil {
+		fmt.Sprintf("ungrouped %d nodes", len(members)), snap, snap); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// --- group helpers ---------------------------------------------------------
+
+func groupMembersTx(tx *sql.Tx, groupID string) ([]string, error) {
+	rows, err := tx.Query(
+		`SELECT node_id FROM map_nodes WHERE group_id = ? ORDER BY added_at`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func placementsForNodesTx(tx *sql.Tx, mapID string, nodeIDs []string) ([]placement, error) {
+	out := make([]placement, 0, len(nodeIDs))
+	for _, id := range nodeIDs {
+		p, err := placementTx(tx, mapID, id)
+		if err != nil {
+			return nil, err
+		}
+		if p != nil {
+			out = append(out, *p)
+		}
+	}
+	return out, nil
+}
+
+// mergeGroupMoveTx collapses a run of drags of the same group into one entry.
+func mergeGroupMoveTx(tx *sql.Tx, actor, groupID string, after []placement) (bool, error) {
+	var id int64
+	var action UndoAction
+	var inverse, forward string
+	err := tx.QueryRow(
+		`SELECT id, action, inverse, forward FROM undo_log
+		 WHERE actor = ? AND undone = 0 ORDER BY id DESC LIMIT 1`, actor).
+		Scan(&id, &action, &inverse, &forward)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil || action != ActionMoveGroup {
+		return false, err
+	}
+	var prev snapshot
+	if err := json.Unmarshal([]byte(inverse), &prev); err != nil {
+		return false, err
+	}
+	if len(prev.Groups) != 1 || prev.Groups[0].ID != groupID {
+		return false, nil
+	}
+	var fwd snapshot
+	if err := json.Unmarshal([]byte(forward), &fwd); err != nil {
+		return false, err
+	}
+	fwd.Placements = after
+	encoded, err := json.Marshal(fwd)
+	if err != nil {
+		return false, err
+	}
+	_, err = tx.Exec(`UPDATE undo_log SET forward = ?, created_at = ? WHERE id = ?`,
+		string(encoded), nowISO(), id)
+	return err == nil, err
+}
+
+func union(a, b []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, list := range [][]string{a, b} {
+		for _, id := range list {
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 // --- assets ----------------------------------------------------------------

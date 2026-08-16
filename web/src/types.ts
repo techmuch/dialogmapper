@@ -67,16 +67,19 @@ export interface DMEdge {
   createdAt: string;
 }
 
+/**
+ * A set of nodes that move together.
+ *
+ * No geometry: the outline is derived from where the members are, so it cannot
+ * drift out of step with them. See groupBounds in Canvas.tsx.
+ */
 export interface DMGroup {
   id: string;
   mapId: string;
   title: string;
   color: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
   createdAt: string;
+  nodeIds: string[];
 }
 
 export interface DMMap {

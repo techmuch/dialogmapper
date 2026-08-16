@@ -26,15 +26,18 @@ CREATE TABLE IF NOT EXISTS maps (
     updated_at  TEXT NOT NULL
 );
 
+-- A group is a set of nodes that move together, not a rectangle drawn behind
+-- them. Membership lives in map_nodes.group_id, and the outline is derived
+-- from where the members actually are.
+--
+-- Storing geometry here was the original mistake: the box and the nodes could
+-- disagree, and nothing belonged to anything. With bounds derived, a member
+-- that moves drags the outline with it by construction.
 CREATE TABLE IF NOT EXISTS groups (
-    map_id     TEXT NOT NULL REFERENCES maps (id) ON DELETE CASCADE,
     id         TEXT PRIMARY KEY,
+    map_id     TEXT NOT NULL REFERENCES maps (id) ON DELETE CASCADE,
     title      TEXT NOT NULL DEFAULT '',
     color      TEXT NOT NULL DEFAULT 'slate',
-    x          REAL NOT NULL DEFAULT 0,
-    y          REAL NOT NULL DEFAULT 0,
-    w          REAL NOT NULL DEFAULT 320,
-    h          REAL NOT NULL DEFAULT 240,
     created_at TEXT NOT NULL
 );
 
@@ -139,6 +142,7 @@ CREATE INDEX IF NOT EXISTS idx_map_nodes_node ON map_nodes (node_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_type    ON nodes (type);
 CREATE INDEX IF NOT EXISTS idx_nodes_updated ON nodes (updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_groups_map    ON groups (map_id);
+CREATE INDEX IF NOT EXISTS idx_map_nodes_group ON map_nodes (group_id);
 CREATE INDEX IF NOT EXISTS idx_assets_node   ON assets (node_id);
 
 -- Keep nodes.updated_at honest without requiring every writer to remember.
