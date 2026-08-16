@@ -10,6 +10,7 @@ import type {
   NodeType,
   Relationship,
   ServerEvent,
+  Status,
 } from "../types";
 
 /**
@@ -78,6 +79,12 @@ interface GraphState {
   removeFromMap: (nodeId: string) => Promise<void>;
   deleteEverywhere: (nodeId: string) => Promise<void>;
   insertExisting: (nodeId: string) => Promise<void>;
+  /** Applies one change to every selected node, as a single undoable action. */
+  bulkUpdate: (ops: {
+    addTags?: string[];
+    removeTags?: string[];
+    status?: Status;
+  }) => Promise<void>;
   /** Gathers the current selection into a group. */
   groupSelection: () => Promise<void>;
   /** Dissolves a group, leaving its nodes where they are. */
@@ -381,6 +388,27 @@ export const useGraph = create<GraphState>((set, get) => ({
       const node = await api.transclude(mapId, nodeId, spot.x, spot.y);
       set((s) => ({ nodes: { ...s.nodes, [node.id]: node }, selectedId: node.id }));
       get().toast(`Inserted "${node.title}" — shared with ${node.mapCount} maps`, "info");
+    } catch (err) {
+      get().toast(describe(err));
+    }
+  },
+
+  bulkUpdate: async (ops) => {
+    const ids = get().selectedIds();
+    if (ids.length === 0) return;
+    try {
+      const { nodes } = await api.bulkUpdate(ids, ops);
+      // Merge rather than reload: the response carries the authoritative node
+      // state, and a full refetch would drop the selection the user is still
+      // working with.
+      set((s) => {
+        const next = { ...s.nodes };
+        for (const n of nodes) {
+          const existing = next[n.id];
+          next[n.id] = { ...n, placement: existing?.placement ?? n.placement };
+        }
+        return { nodes: next };
+      });
     } catch (err) {
       get().toast(describe(err));
     }

@@ -791,4 +791,253 @@ func TestUndoManyStepsUnwindsInOrder(t *testing.T) {
 	}
 }
 
+// --- bulk editing ----------------------------------------------------------
+
+// mixedSelection builds three nodes with deliberately uneven tags and statuses,
+// which is the normal case for a selection and the one a naive implementation
+// gets wrong.
+func mixedSelection(t *testing.T, as *Store) (mapID string, ids []string) {
+	t.Helper()
+	m, err := as.CreateMap("M", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := []struct {
+		title  string
+		tags   []string
+		status Status
+	}{
+		{"A", []string{"perf"}, StatusOpen},
+		{"B", []string{"perf", "ops"}, StatusResolved},
+		{"C", nil, StatusOpen},
+	}
+	for _, s := range seed {
+		content := DefaultContent("test")
+		content.Tags = s.tags
+		content.Status = s.status
+		n, _, err := as.CreateNode(NewNodeInput{
+			Type: ibis.Idea, Title: s.title, MapID: m.ID, Content: &content,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, n.ID)
+	}
+	return m.ID, ids
+}
+
+func tagsOf(t *testing.T, s *Store, id string) []string {
+	t.Helper()
+	n, err := s.GetNode(id, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n.Content.Tags
+}
+
+func hasTag(tags []string, want string) bool {
+	for _, t := range tags {
+		if t == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBulkAddTagAppliesToEveryNode(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	_, ids := mixedSelection(t, as)
+
+	if _, err := as.BulkUpdateNodes(ids, BulkOps{AddTags: []string{"cache"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		if !hasTag(tagsOf(t, s, id), "cache") {
+			t.Errorf("node %s did not get the tag", id)
+		}
+	}
+	// A node that already had #perf must not end up with it twice.
+	if got := tagsOf(t, s, ids[0]); len(got) != 2 {
+		t.Errorf("tags = %v, want exactly perf and cache", got)
+	}
+}
+
+func TestBulkAddIsIdempotentForNodesThatAlreadyHaveIt(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	_, ids := mixedSelection(t, as)
+
+	// #perf is on two of the three: adding it to the selection must promote
+	// the third without disturbing the others.
+	if _, err := as.BulkUpdateNodes(ids, BulkOps{AddTags: []string{"perf"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		tags := tagsOf(t, s, id)
+		if !hasTag(tags, "perf") {
+			t.Errorf("node %s missing perf", id)
+		}
+		var count int
+		for _, tag := range tags {
+			if tag == "perf" {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("node %s has perf %d times", id, count)
+		}
+	}
+	if !hasTag(tagsOf(t, s, ids[1]), "ops") {
+		t.Error("adding one tag removed another")
+	}
+}
+
+func TestBulkRemoveTagOnlyTouchesThatTag(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	_, ids := mixedSelection(t, as)
+
+	if _, err := as.BulkUpdateNodes(ids, BulkOps{RemoveTags: []string{"perf"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		if hasTag(tagsOf(t, s, id), "perf") {
+			t.Errorf("node %s still has perf", id)
+		}
+	}
+	// Removing a tag a node did not have is a no-op, and other tags survive.
+	if !hasTag(tagsOf(t, s, ids[1]), "ops") {
+		t.Error("removing perf also removed ops")
+	}
+}
+
+func TestBulkStatusOverwritesMixedValues(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	_, ids := mixedSelection(t, as)
+
+	// The selection starts mixed (two open, one resolved). Setting a status
+	// has to land on all of them, not just the ones that differ.
+	if _, err := as.BulkUpdateNodes(ids, BulkOps{Status: statusPtr(StatusParked)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		n, _ := s.GetNode(id, "")
+		if n.Content.Status != StatusParked {
+			t.Errorf("node %s status = %q, want parked", id, n.Content.Status)
+		}
+	}
+}
+
+// TestBulkEditIsASingleUndo is the property that makes bulk editing usable:
+// the user did one thing, so one Ctrl-Z reverses it.
+func TestBulkEditIsASingleUndo(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	mapID, ids := mixedSelection(t, as)
+
+	depthBefore, _, _ := s.UndoDepth(alice, mapID)
+	if _, err := as.BulkUpdateNodes(ids, BulkOps{
+		AddTags: []string{"cache"}, Status: statusPtr(StatusResolved),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	depthAfter, _, _ := s.UndoDepth(alice, "")
+	if depthAfter != depthBefore+1 {
+		t.Fatalf("a bulk edit of %d nodes added %d undo entries, want 1",
+			len(ids), depthAfter-depthBefore)
+	}
+
+	entry, err := as.Undo(alice, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(entry.Label, "3") {
+		t.Errorf("label = %q, should say how many nodes were affected", entry.Label)
+	}
+
+	// Every node is back to its own original state, not to a shared one.
+	wantTags := [][]string{{"perf"}, {"ops", "perf"}, {}}
+	wantStatus := []Status{StatusOpen, StatusResolved, StatusOpen}
+	for i, id := range ids {
+		n, _ := s.GetNode(id, "")
+		if n.Content.Status != wantStatus[i] {
+			t.Errorf("node %d status = %q, want %q", i, n.Content.Status, wantStatus[i])
+		}
+		if len(n.Content.Tags) != len(wantTags[i]) {
+			t.Errorf("node %d tags = %v, want %v", i, n.Content.Tags, wantTags[i])
+			continue
+		}
+		for _, want := range wantTags[i] {
+			if !hasTag(n.Content.Tags, want) {
+				t.Errorf("node %d lost tag %q (has %v)", i, want, n.Content.Tags)
+			}
+		}
+	}
+}
+
+func TestBulkEditRedoReapplies(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	_, ids := mixedSelection(t, as)
+
+	as.BulkUpdateNodes(ids, BulkOps{AddTags: []string{"cache"}})
+	if _, err := as.Undo(alice, ""); err != nil {
+		t.Fatal(err)
+	}
+	if hasTag(tagsOf(t, s, ids[2]), "cache") {
+		t.Fatal("undo did not remove the tag")
+	}
+	if _, err := as.Redo(alice, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		if !hasTag(tagsOf(t, s, id), "cache") {
+			t.Errorf("redo did not restore the tag on %s", id)
+		}
+	}
+}
+
+func TestBulkUpdateRejectsNonsense(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	_, ids := mixedSelection(t, as)
+
+	if _, err := as.BulkUpdateNodes(nil, BulkOps{AddTags: []string{"x"}}); err == nil {
+		t.Error("an empty selection should be refused")
+	}
+	if _, err := as.BulkUpdateNodes(ids, BulkOps{}); err == nil {
+		t.Error("a no-op edit should be refused rather than writing an undo entry")
+	}
+	bad := Status("nonsense")
+	if _, err := as.BulkUpdateNodes(ids, BulkOps{Status: &bad}); err == nil {
+		t.Error("an unknown status should be refused")
+	}
+	// A refused edit must leave no journal entry behind.
+	if depth, _, _ := s.UndoDepth(alice, ""); depth != len(ids) {
+		t.Errorf("undo depth = %d, want %d (only the creates)", depth, len(ids))
+	}
+}
+
+func TestBulkUpdateFailsAtomicallyOnAMissingNode(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	_, ids := mixedSelection(t, as)
+
+	_, err := as.BulkUpdateNodes(append(ids, "does_not_exist"), BulkOps{
+		AddTags: []string{"cache"},
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	// Nothing may have been written: a half-applied bulk edit is worse than
+	// none, because the user cannot see which half took.
+	for _, id := range ids {
+		if hasTag(tagsOf(t, s, id), "cache") {
+			t.Errorf("node %s was modified despite the failure", id)
+		}
+	}
+}
+
 func statusPtr(s Status) *Status { return &s }

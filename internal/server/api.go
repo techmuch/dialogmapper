@@ -256,6 +256,34 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+
+	// /api/nodes/bulk — one change across a whole selection, recorded as one
+	// undo entry rather than one per node.
+	if id == "bulk" {
+		if r.Method != http.MethodPatch {
+			writeErr(w, errMethod)
+			return
+		}
+		var in struct {
+			NodeIDs []string `json:"nodeIds"`
+			store.BulkOps
+		}
+		if err := decode(r, &in); err != nil {
+			writeErr(w, err)
+			return
+		}
+		updated, err := s.actorStore(r).BulkUpdateNodes(in.NodeIDs, in.BulkOps)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		// A bulk edit touches nodes that may appear on several maps, so
+		// clients refetch rather than patching each one from a diff.
+		s.publish(r, Event{Type: "graph.invalidated",
+			Payload: map[string]any{"reason": "several nodes were edited"}})
+		writeJSON(w, http.StatusOK, map[string]any{"nodes": updated})
+		return
+	}
 	mapID := r.URL.Query().Get("mapId")
 
 	// /api/nodes/{id}/placement — drag end, collapse, group assignment.

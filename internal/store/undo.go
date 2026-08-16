@@ -41,6 +41,7 @@ const (
 	ActionSaveGroup   UndoAction = "group.save"
 	ActionDeleteGroup UndoAction = "group.delete"
 	ActionMoveGroup   UndoAction = "group.move"
+	ActionBulkUpdate  UndoAction = "nodes.bulkUpdate"
 )
 
 // CLIActor is the actor recorded for changes made by command-line runs, so a
@@ -51,7 +52,11 @@ const CLIActor = "cli"
 // snapshot is the serialized form of everything needed to recreate a node
 // exactly, including where it sat on every map and what it was linked to.
 type snapshot struct {
-	Node       *Node       `json:"node,omitempty"`
+	Node *Node `json:"node,omitempty"`
+	// Nodes carries several node states at once, for actions that touch a
+	// whole selection. A bulk edit is one thing the user did, so it is one
+	// journal entry rather than one per node.
+	Nodes      []Node      `json:"nodes,omitempty"`
 	Placements []placement `json:"placements,omitempty"`
 	Edges      []Edge      `json:"edges,omitempty"`
 	Groups     []Group     `json:"groups,omitempty"`
@@ -302,6 +307,24 @@ func applyInverseTx(tx *sql.Tx, action UndoAction, payload string, redo bool) er
 			 WHERE id = ?`,
 			snap.Node.Type, snap.Node.Title, content, nowISO(), snap.Node.ID)
 		return err
+
+	case ActionBulkUpdate:
+		// Both directions are the same write: put every recorded node back the
+		// way it was on that side of the edit.
+		for i := range snap.Nodes {
+			n := snap.Nodes[i]
+			content, err := n.Content.marshal()
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(
+				`UPDATE nodes SET type = ?, title = ?, content = ?, updated_at = ?
+				 WHERE id = ?`,
+				n.Type, n.Title, content, nowISO(), n.ID); err != nil {
+				return err
+			}
+		}
+		return nil
 
 	case ActionMoveNode, ActionMoveGroup:
 		// Moving a group is moving its members, so both directions are the

@@ -10,7 +10,7 @@ export const Footer: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <Network style={{ width: '1.25rem', height: '1.25rem', color: 'var(--accent-cyan)' }} />
             <span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#fff' }}>dialogmapper</span>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>v0.0.11 • MIT License</span>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>v0.0.12 • MIT License</span>
           </div>
 
           <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem' }}>

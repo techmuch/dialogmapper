@@ -143,6 +143,15 @@ const uiFeatures: UiFeature[] = [
     whyItMatters: 'Provides instant graph traversal and auditability.'
   },
   {
+    id: 'sidebar-multi',
+    category: 'sidebar',
+    name: 'Multi-Select Panel (Bulk Tags & Status)',
+    badge: 'Bulk',
+    description: 'With several nodes selected, the panel switches to what applies to a set.',
+    howToUse: 'Select two or more nodes. The panel shows a breakdown of the selection, then three-state chips for tags and status: solid means every selected node has that value, faded with a count (1/3) means only some do. Click either one to apply it to all; click a solid tag to remove it from all.',
+    whyItMatters: 'Faded is an affordance, not a dead end — it tells you the selection is inconsistent and lets you fix it in the same click. The whole edit is a single undo entry, so tagging forty nodes takes one ⌘Z to reverse, and undo restores each node\'s own prior tags rather than a shared state.'
+  },
+  {
     id: 'sidebar-deletion',
     category: 'sidebar',
     name: 'Remove from Map vs. Delete Everywhere',

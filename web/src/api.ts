@@ -169,6 +169,25 @@ export const api = {
     },
   ) => request<DMNode>(`/api/nodes/${id}`, { method: "PATCH", body: json(patch) }),
 
+  /**
+   * One change across a whole selection.
+   *
+   * Tags are add/remove sets rather than a replacement list: a selection
+   * rarely shares one set of tags, and "set the tags to X" would silently wipe
+   * tags the user cannot see from the panel.
+   *
+   * Sent as one request so the server records one undo entry — looping
+   * individual PATCHes would make Ctrl+Z walk back a bulk edit node by node.
+   */
+  bulkUpdate: (
+    nodeIds: string[],
+    ops: { addTags?: string[]; removeTags?: string[]; status?: Status },
+  ) =>
+    request<{ nodes: DMNode[] }>("/api/nodes/bulk", {
+      method: "PATCH",
+      body: json({ nodeIds, ...ops }),
+    }),
+
   moveNode: (
     mapId: string,
     nodeId: string,

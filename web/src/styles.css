@@ -365,6 +365,42 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .chip--con.is-on  { background: var(--con); }
 .chip__text, .chip__x { background: none; border: none; cursor: pointer; padding: 0; color: inherit; }
 
+/* Tri-state chips for a multi-node selection.
+   `is-all`    — every selected node has this value
+   `is-some`   — only some do; faded, but still clickable, because the point is
+                 to be able to bring the rest into line
+   `is-none`   — none do */
+.chip--tri.is-all {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b0f14;
+  font-weight: 600;
+}
+.chip--tri.is-some {
+  /* Faded fill plus a dashed edge: readable at a glance as "partly applied",
+     and distinguishable without relying on colour alone. */
+  background: rgba(122, 162, 247, .22);
+  border-style: dashed;
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.chip--tri.is-some .chip__count {
+  margin-left: 4px;
+  font-size: 9px;
+  opacity: .75;
+  font-variant-numeric: tabular-nums;
+}
+.chip--tri.is-none { opacity: .75; }
+.chip--tri:disabled, .chip--tri button:disabled { cursor: progress; }
+.chip--static { cursor: default; gap: 4px; }
+
+.multi__note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+
 .callout { background: rgba(187, 154, 247, .08); border: 1px solid rgba(187, 154, 247, .3); border-radius: 6px; padding: 8px 10px; }
 .callout p { margin: 0; line-height: 1.5; color: var(--fg-dim); }
 

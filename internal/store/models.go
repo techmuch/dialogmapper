@@ -88,6 +88,17 @@ func (c *NodeContent) normalize() {
 	c.Tags = out
 }
 
+// clone deep-copies the slices, so a snapshot taken before an edit cannot be
+// mutated by the edit itself. Without this the undo journal would record the
+// post-edit state on both sides and reverse nothing.
+func (c NodeContent) clone() NodeContent {
+	out := c
+	out.Tags = append([]string(nil), c.Tags...)
+	out.Assets = append([]Asset(nil), c.Assets...)
+	out.Links = append([]Link(nil), c.Links...)
+	return out
+}
+
 func (c NodeContent) marshal() (string, error) {
 	c.normalize()
 	b, err := json.Marshal(c)

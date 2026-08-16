@@ -73,6 +73,21 @@ needs a mouse correction afterwards.
 Question's most recent Idea rather than failing, because a grammar error
 mid-sentence costs more than a sensible guess.
 
+## Editing several nodes at once
+
+Select more than one node and the details panel switches to the things that
+apply to a set: what is in the selection, its tags, and its status. Title and
+body are per-node, so they disappear rather than pretending.
+
+Tag and status chips are three-state. A solid chip means every selected node
+has that value; a faded one with a count (`1/3`) means only some do. Faded is
+an affordance, not a dead end — clicking still applies to all of them, which is
+usually what you wanted when you noticed the inconsistency.
+
+The whole edit is one action. Tagging forty nodes takes one `Ctrl+Z` to
+reverse, and undo restores each node's own prior tags rather than a shared
+state, so a tag that was on one of three goes back to being on one of three.
+
 ## Groups
 
 Shift-drag a box or shift-click to select several nodes, then press `g`. The

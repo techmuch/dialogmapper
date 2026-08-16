@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { describe, useGraph } from "../store/useGraph";
 import { useUI } from "../store/useUI";
+import MultiSelectPanel from "./MultiSelectPanel";
 import {
   NODE_GLYPHS,
   NODE_LABELS,
   REL_LABELS,
   type Asset,
+  type DMNode,
   type NodeType,
   type Status,
 } from "../types";
@@ -28,7 +30,16 @@ export function Sidebar() {
   const setTagFilter = useUI((s) => s.setTagFilter);
 
   const selectedId = useGraph((s) => s.selectedId);
+  const multiSelected = useGraph((s) => s.multiSelected);
   const node = useGraph((s) => (s.selectedId ? s.nodes[s.selectedId] : null));
+  const allNodes = useGraph((s) => s.nodes);
+
+  // Resolved here rather than in the child so the panel choice and its data
+  // come from one place.
+  const selectedNodes = useMemo(() => {
+    const ids = selectedId ? [selectedId, ...multiSelected] : [...multiSelected];
+    return ids.map((id) => allNodes[id]).filter(Boolean) as DMNode[];
+  }, [selectedId, multiSelected, allNodes]);
   const edges = useGraph((s) => s.edges);
   const nodes = useGraph((s) => s.nodes);
   const maps = useGraph((s) => s.maps);
@@ -64,6 +75,12 @@ export function Sidebar() {
   }, [node, edges, nodes]);
 
   if (!open) return null;
+
+  // More than one node selected: title and body have no meaning across a set,
+  // so the panel switches to the things that do.
+  if (selectedNodes.length > 1) {
+    return <MultiSelectPanel nodes={selectedNodes} />;
+  }
 
   if (!node) {
     return (

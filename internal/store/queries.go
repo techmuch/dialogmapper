@@ -471,6 +471,162 @@ func mergeEditTx(tx *sql.Tx, actor, nodeID string, after *Node) (bool, error) {
 	return err == nil, err
 }
 
+// BulkOps describes a change applied to a whole selection at once.
+//
+// Tags are expressed as add and remove sets rather than a replacement list,
+// because a selection rarely shares one set of tags. "Add #perf to all of
+// these" is a coherent instruction whatever each node already carries;
+// "set the tags to X" would silently wipe tags the user could not see.
+type BulkOps struct {
+	AddTags    []string `json:"addTags,omitempty"`
+	RemoveTags []string `json:"removeTags,omitempty"`
+	Status     *Status  `json:"status,omitempty"`
+}
+
+func (o BulkOps) isEmpty() bool {
+	return len(o.AddTags) == 0 && len(o.RemoveTags) == 0 && o.Status == nil
+}
+
+// BulkUpdateNodes applies one change to many nodes in a single transaction and
+// records it as a single undo entry.
+//
+// The entry matters as much as the transaction. Looping individual updates
+// would leave one journal entry per node, so Ctrl-Z would walk back a bulk
+// edit one node at a time — which is not what the user did, and is tedious to
+// reverse when they tagged forty nodes at once.
+func (s *Store) BulkUpdateNodes(nodeIDs []string, ops BulkOps) ([]Node, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	if len(nodeIDs) == 0 {
+		return nil, errors.New("no nodes selected")
+	}
+	if ops.isEmpty() {
+		return nil, errors.New("nothing to change")
+	}
+	if ops.Status != nil && !isValidStatus(*ops.Status) {
+		return nil, fmt.Errorf("unknown status %q", *ops.Status)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	before := make([]Node, 0, len(nodeIDs))
+	after := make([]Node, 0, len(nodeIDs))
+
+	for _, id := range nodeIDs {
+		n, err := nodeByIDTx(tx, id)
+		if err != nil {
+			return nil, err
+		}
+		snapshotBefore := *n
+		snapshotBefore.Content = n.Content.clone()
+		before = append(before, snapshotBefore)
+
+		for _, t := range ops.AddTags {
+			n.Content.Tags = append(n.Content.Tags, t)
+		}
+		if len(ops.RemoveTags) > 0 {
+			drop := map[string]bool{}
+			for _, t := range ops.RemoveTags {
+				drop[strings.TrimSpace(strings.ToLower(t))] = true
+			}
+			kept := n.Content.Tags[:0]
+			for _, t := range n.Content.Tags {
+				if !drop[strings.TrimSpace(strings.ToLower(t))] {
+					kept = append(kept, t)
+				}
+			}
+			n.Content.Tags = kept
+		}
+		if ops.Status != nil {
+			n.Content.Status = *ops.Status
+		}
+		// normalize dedupes and lowercases, so adding a tag a node already has
+		// is a no-op rather than a duplicate.
+		n.Content.normalize()
+
+		payload, err := n.Content.marshal()
+		if err != nil {
+			return nil, err
+		}
+		n.UpdatedAt = nowISO()
+		if _, err := tx.Exec(
+			`UPDATE nodes SET content = ?, updated_at = ? WHERE id = ?`,
+			payload, n.UpdatedAt, n.ID); err != nil {
+			return nil, err
+		}
+		after = append(after, *n)
+	}
+
+	if err := clearRedoTx(tx, s.actor); err != nil {
+		return nil, err
+	}
+	if err := recordTx(tx, "", s.actor, ActionBulkUpdate,
+		bulkLabel(len(nodeIDs), ops),
+		snapshot{Nodes: before}, snapshot{Nodes: after}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return after, nil
+}
+
+// bulkLabel names the action for the undo toast and tooltip.
+func bulkLabel(n int, ops BulkOps) string {
+	plural := "nodes"
+	if n == 1 {
+		plural = "node"
+	}
+	switch {
+	case len(ops.AddTags) > 0 && len(ops.RemoveTags) == 0 && ops.Status == nil:
+		return fmt.Sprintf("tagged %d %s #%s", n, plural, strings.Join(ops.AddTags, " #"))
+	case len(ops.RemoveTags) > 0 && len(ops.AddTags) == 0 && ops.Status == nil:
+		return fmt.Sprintf("untagged %d %s #%s", n, plural, strings.Join(ops.RemoveTags, " #"))
+	case ops.Status != nil && len(ops.AddTags) == 0 && len(ops.RemoveTags) == 0:
+		return fmt.Sprintf("set %d %s to %s", n, plural, *ops.Status)
+	default:
+		return fmt.Sprintf("edited %d %s", n, plural)
+	}
+}
+
+func isValidStatus(s Status) bool {
+	switch s {
+	case StatusOpen, StatusResolved, StatusRejected, StatusParked:
+		return true
+	}
+	return false
+}
+
+// nodeByIDTx loads a node inside a transaction, without map context.
+func nodeByIDTx(tx *sql.Tx, id string) (*Node, error) {
+	var n Node
+	var payload string
+	var mapRef sql.NullString
+	err := tx.QueryRow(
+		`SELECT id, type, title, content, map_ref_id, created_at, updated_at
+		 FROM nodes WHERE id = ?`, id).
+		Scan(&n.ID, &n.Type, &n.Title, &payload, &mapRef, &n.CreatedAt, &n.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("node %s: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if mapRef.Valid {
+		n.MapRefID = &mapRef.String
+	}
+	if err := json.Unmarshal([]byte(payload), &n.Content); err != nil {
+		return nil, fmt.Errorf("decode content of %s: %w", id, err)
+	}
+	n.Content.normalize()
+	return &n, nil
+}
+
 // validateRetype rejects a type change that would orphan existing edges,
 // naming the specific edge at fault.
 func (s *Store) validateRetype(nodeID string, newType ibis.NodeType) error {
