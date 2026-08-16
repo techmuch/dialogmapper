@@ -33,10 +33,10 @@ const uiFeatures: UiFeature[] = [
   {
     id: 'type-toggles',
     category: 'toolbar',
-    name: 'Node Type Toggle Buttons (?, i, +, -, n)',
+    name: 'Node Type Toggle Buttons (? ! + − ·)',
     badge: 'Filter',
     description: 'Quickly toggle visibility for Questions, Ideas, Pros, Cons, or Notes.',
-    howToUse: 'Click any type icon in the toolbar center to toggle its canvas visibility on/off.',
+    howToUse: 'Click any glyph in the toolbar centre to fade that type out: `?` Question, `!` Idea, `+` Pro, `−` Con, `·` Note. The same glyphs mark the cards themselves and the markdown export.',
     whyItMatters: 'Enables focusing exclusively on argument structures (e.g. Ideas + Pros/Cons) or notes during facilitation.'
   },
   {
@@ -179,13 +179,49 @@ const uiFeatures: UiFeature[] = [
     whyItMatters: 'Conveys node status and transclusion count at a glance.'
   },
   {
-    id: 'group-boxes',
-    category: 'nodecard',
-    name: 'Spatial Group Boxes',
+    id: 'multi-select',
+    category: 'canvas',
+    name: 'Multi-Select (Shift-Drag & Shift-Click)',
+    shortcut: 'a',
+    description: 'Select several nodes at once, for grouping or bulk actions.',
+    howToUse: 'Shift-drag a box across the canvas, or shift-click nodes one at a time to extend the selection. Press `a` to select everything currently visible, which respects any active filter.',
+    whyItMatters: 'A plain drag pans the canvas, so the map keeps feeling like a map; selection is the deliberate, modified gesture.'
+  },
+  {
+    id: 'groups',
+    category: 'canvas',
+    name: 'Groups',
+    shortcut: 'g',
     badge: 'Cluster',
-    description: 'Resizable visual containers drawn around clusters of nodes.',
-    howToUse: 'Double-click the group title (e.g. "Cluster") to edit its label. Drag handles on edges to resize width and height. Click × to delete the group box container.',
-    whyItMatters: 'Carries zero IBIS grammar weight and creates no graph edges. Teams can organize clusters by topic or owner without polluting the decision tree.'
+    description: 'A set of nodes that move together as one.',
+    howToUse: 'Select two or more nodes and press `g`, or click the "Group N nodes" button that appears. Drag anywhere on the outline to move every member with it. Click the name to rename, ◎ to reselect its members, and × to ungroup.',
+    whyItMatters: 'The outline has no geometry of its own — it is derived from where the members are, so moving one member restretches it and the two can never drift apart. There is nothing to resize, because membership is the bounds.'
+  },
+  {
+    id: 'group-safety',
+    category: 'canvas',
+    name: 'Ungrouping & Group Membership',
+    description: 'Groups are an arrangement of nodes, never a container that owns them.',
+    howToUse: 'Click × on a group to dissolve it — every node stays exactly where it sits. A node belongs to one group per map, so regrouping it moves it rather than leaving it in two.',
+    whyItMatters: 'Grouping creates no IBIS edges and carries no grammar weight, so clustering by theme or owner never pollutes the argument tree that exports depend on.'
+  },
+  {
+    id: 'canvas-navigation',
+    category: 'canvas',
+    name: 'Canvas Navigation (Arrows, Space, f)',
+    shortcut: '← ↑ → ↓',
+    description: 'Move the selection and the viewport without the mouse.',
+    howToUse: 'Arrow keys move the selection to the nearest node in that direction. `Space` centres on the selection, or fits the whole map when nothing is selected. `f` always fits the map.',
+    whyItMatters: 'Arrow navigation is spatial rather than structural: it moves to what you can see, which is what a person means by "the node to the right".'
+  },
+  {
+    id: 'phone-qr',
+    category: 'canvas',
+    name: 'Join From a Phone (QR Code)',
+    shortcut: '?',
+    description: 'A scannable code for getting a phone onto the map.',
+    howToUse: 'Press `?` for the help panel; the QR sits at the top. Or scan the one printed in your terminal when the server starts.',
+    whyItMatters: 'The code carries the machine\'s LAN address, never localhost, plus a per-run access key — so scanning just works and the map is not left open to the network unprotected.'
   }
 ];
 
@@ -194,7 +230,12 @@ export const MainUiGuide: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredFeatures = uiFeatures.filter(f => {
-    const matchesCategory = activeCategory === 'all' || f.category === activeCategory;
+    // The "Canvas & Node Cards" tab covers both card controls and canvas-wide
+    // gestures like selection and grouping, which is how a user thinks of them.
+    const matchesCategory =
+      activeCategory === 'all' ||
+      f.category === activeCategory ||
+      (activeCategory === 'nodecard' && f.category === 'canvas');
     const matchesSearch = f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           f.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           f.howToUse.toLowerCase().includes(searchTerm.toLowerCase());

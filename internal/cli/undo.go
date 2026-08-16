@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/davidfullmer/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/store"
 )
 
 // `dialogmapper undo` exists mainly for one situation: a `seed` run that

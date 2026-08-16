@@ -18,7 +18,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/davidfullmer/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/store"
 )
 
 // End-to-end tests against a real HTTP server backed by a real SQLite file.

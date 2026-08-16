@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/ibis"
 )
 
 // ExportMarkdown renders a map as an indented IBIS outline. The traversal is

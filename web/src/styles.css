@@ -289,12 +289,19 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
   font-size: 10px;
 }
 .group__input { background: var(--bg-3); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 4px; font-size: 11px; }
+.group__title,
 .group__select,
 .group__delete {
   background: none; border: none; color: var(--fg-dim); cursor: pointer;
   padding: 0 2px; line-height: 1;
 }
-.group__select:hover, .group__delete:hover { color: var(--fg); }
+.group__title { font-weight: 600; }
+.group__title:hover,
+.group__select:hover,
+.group__delete:hover { color: var(--fg); }
+/* The label row is controls, so it takes clicks even though the surrounding
+   outline is a drag surface. */
+.group__label { pointer-events: auto; }
 
 /* --- sidebar ------------------------------------------------------------ */
 

@@ -43,7 +43,7 @@ export const FeatureWalkthroughs: React.FC = () => {
             className={`tab-btn ${activeTab === 'groups' ? 'active' : ''}`}
           >
             <BoxSelect style={{ width: '1.1rem', height: '1.1rem' }} />
-            <span>Spatial Group Boxes</span>
+            <span>Groups That Move Together</span>
           </button>
 
           <button
@@ -170,6 +170,34 @@ export const FeatureWalkthroughs: React.FC = () => {
                   </div>
                   <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Tidy tree alignment</span>
                 </div>
+
+                <div style={{ background: 'var(--bg-dark)', padding: '0.875rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <kbd className="kbd">⌘Z</kbd> <span style={{ fontWeight: 600 }}>Undo</span>
+                  </div>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Your own actions only</span>
+                </div>
+
+                <div style={{ background: 'var(--bg-dark)', padding: '0.875rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <kbd className="kbd">g</kbd> <span style={{ fontWeight: 600 }}>Group Selection</span>
+                  </div>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Moves as one</span>
+                </div>
+
+                <div style={{ background: 'var(--bg-dark)', padding: '0.875rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <kbd className="kbd">/</kbd> <span style={{ fontWeight: 600 }}>Insert Existing</span>
+                  </div>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Search every map</span>
+                </div>
+
+                <div style={{ background: 'var(--bg-dark)', padding: '0.875rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                    <kbd className="kbd">Space</kbd> <span style={{ fontWeight: 600 }}>Centre / Fit</span>
+                  </div>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Arrows move selection</span>
+                </div>
               </div>
             </div>
 
@@ -236,7 +264,7 @@ export const FeatureWalkthroughs: React.FC = () => {
                   Group: Database Architecture Options
                 </span>
                 <span style={{ fontSize: '0.75rem', background: 'rgba(56, 189, 248, 0.12)', color: 'var(--accent-cyan)', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', fontWeight: 600 }}>
-                  Spatial Container
+                  2 members
                 </span>
               </div>
 
@@ -252,7 +280,7 @@ export const FeatureWalkthroughs: React.FC = () => {
               </div>
 
               <div style={{ marginTop: '1rem', fontSize: '0.8125rem', color: 'var(--text-dim)', textAlign: 'right' }}>
-                Resize handles on corners & edges
+                Drag the outline — both members move with it
               </div>
             </div>
           </div>

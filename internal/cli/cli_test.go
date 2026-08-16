@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/davidfullmer/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/store"
 )
 
 // Round-trip tests that drive the real cobra commands: init writes a project,

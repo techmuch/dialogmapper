@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
-	"github.com/davidfullmer/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/store"
 )
 
 // --- helpers ---------------------------------------------------------------

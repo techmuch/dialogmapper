@@ -9,7 +9,7 @@ Everything lives in one SQLite file and one executable. No server, no account,
 no network.
 
 ```
-go install github.com/davidfullmer/dialogmapper@latest
+go install github.com/techmuch/dialogmapper@latest
 
 dialogmapper init
 dialogmapper start --open

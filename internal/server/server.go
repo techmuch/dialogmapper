@@ -16,8 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/davidfullmer/dialogmapper/internal/store"
-	"github.com/davidfullmer/dialogmapper/internal/web"
+	"github.com/techmuch/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/web"
 )
 
 // Server is the HTTP handler for one project.

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidfullmer/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/store"
 )
 
 // maxAssetBytes caps a single upload. Dialog maps hold screenshots and

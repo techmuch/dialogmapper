@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
-	"github.com/davidfullmer/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/store"
 )
 
 func newExportCmd() *cobra.Command {

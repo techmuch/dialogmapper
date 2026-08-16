@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/ibis"
 )
 
 // The seed parser is heuristic, which means it is the component most likely to

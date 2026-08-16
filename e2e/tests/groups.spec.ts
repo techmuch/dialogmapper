@@ -208,6 +208,38 @@ test("ungrouping leaves the nodes exactly where they are", async ({ page, dm }) 
   expect(Math.abs(after.y - before.y)).toBeLessThan(2);
 });
 
+test("a group can be renamed, and the name sticks", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+
+  await expect(page.locator(".group__title")).toHaveText("Cluster");
+  // Clicking the name opens the field. It is a button rather than a bare
+  // span because the outline around it is a drag surface, and a click that
+  // starts a drag never becomes a rename.
+  await page.locator(".group__title").click();
+  await expect(page.locator(".group__input")).toBeFocused();
+
+  await page.locator(".group__input").fill("Caching options");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".group__title")).toHaveText("Caching options");
+
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(page.locator(".group__title")).toHaveText("Caching options");
+});
+
+test("Escape abandons a rename", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await selectNodes(page, MEMBERS);
+  await page.keyboard.press("g");
+
+  await page.locator(".group__title").click();
+  await page.locator(".group__input").fill("Half-typed");
+  await page.keyboard.press("Escape");
+
+  await expect(page.locator(".group__title")).toHaveText("Cluster");
+});
+
 test("the group badge selects its members", async ({ page, dm }) => {
   await openCanvas(page, dm);
   await selectNodes(page, MEMBERS);

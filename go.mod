@@ -1,4 +1,4 @@
-module github.com/davidfullmer/dialogmapper
+module github.com/techmuch/dialogmapper
 
 go 1.25.0
 

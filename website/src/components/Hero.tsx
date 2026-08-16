@@ -3,7 +3,7 @@ import { Terminal, Copy, Check, Sparkles, ShieldCheck, Zap, Cpu, Database } from
 
 export const Hero: React.FC = () => {
   const [copied, setCopied] = useState(false);
-  const installCmd = 'go install github.com/davidfullmer/dialogmapper@latest';
+  const installCmd = 'go install github.com/techmuch/dialogmapper@latest';
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(installCmd);

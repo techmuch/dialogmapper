@@ -18,7 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/davidfullmer/dialogmapper/internal/server"
+	"github.com/techmuch/dialogmapper/internal/server"
 )
 
 func newStartCmd() *cobra.Command {

@@ -55,6 +55,10 @@ function GroupBoxImpl({ data }: NodeProps) {
    */
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    // The label row is controls, not canvas: renaming, selecting members and
+    // ungrouping all live there. Starting a drag from it would swallow the
+    // double-click that opens the rename field.
+    if ((e.target as HTMLElement).closest(".group__label")) return;
     e.stopPropagation(); // do not pan the canvas
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     drag.current = { lastX: e.clientX, lastY: e.clientY, total: { x: 0, y: 0 } };
@@ -119,9 +123,14 @@ function GroupBoxImpl({ data }: NodeProps) {
           />
         ) : (
           <>
-            <span onDoubleClick={() => setEditing(true)}>
+            <button
+              className="group__title"
+              title="Rename this group"
+              onClick={() => setEditing(true)}
+              onDoubleClick={() => setEditing(true)}
+            >
               {group.title || "Cluster"}
-            </span>
+            </button>
             <span className="group__count">{group.nodeIds.length}</span>
             <button
               className="group__select"

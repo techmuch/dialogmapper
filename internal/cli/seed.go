@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
-	"github.com/davidfullmer/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/store"
 )
 
 // Seeding is the pre-computation half of the AI loop: an agent (or a human)

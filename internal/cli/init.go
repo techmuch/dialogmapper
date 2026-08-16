@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/davidfullmer/dialogmapper/internal/store"
+	"github.com/techmuch/dialogmapper/internal/store"
 )
 
 func newInitCmd() *cobra.Command {
@@ -98,7 +98,7 @@ given, and existing markdown files are never overwritten.`,
 func readmeTemplate(dirName, mapName string) string {
 	return fmt.Sprintf(`# %s
 
-A [dialogmapper](https://github.com/davidfullmer/dialogmapper) project: an
+A [dialogmapper](https://github.com/techmuch/dialogmapper) project: an
 IBIS dialog map of a problem worth arguing about carefully.
 
 ## Working with this project

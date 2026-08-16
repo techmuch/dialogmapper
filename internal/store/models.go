@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/ibis"
 )
 
 // Status marks where a node sits in the deliberation lifecycle.

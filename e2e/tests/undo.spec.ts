@@ -84,35 +84,26 @@ test("Ctrl+Z inside the title editor undoes the graph, not the text field", asyn
   await expect(page.locator(".node")).toHaveCount(before);
 });
 
-test("a typed title undoes in one keystroke, not one per character", async ({
+test("creating and titling a node is one undo, not one per character", async ({
   page,
   dm,
 }) => {
   await openCanvas(page, dm);
+  const before = await page.locator(".node").count();
 
+  // The capture loop's actual shape: press `q`, type, commit. That is one act
+  // of authorship even though it writes a node and then an edit, so one
+  // Ctrl+Z must take the whole thing — not leave an untitled node behind, and
+  // not need one press per character.
   await selectNode(page, "Add a read-through cache");
   await page.keyboard.press("q");
-  // Wait for the editor before committing: the node is created over the
-  // network, and under load the Enter would otherwise arrive first and be
-  // read as a canvas shortcut.
-  await expect(page.locator(".node__input")).toBeFocused();
-  await page.keyboard.press("Enter"); // commit the placeholder
-
-  const created = page.locator(".node.is-selected");
-  await created.dblclick();
-  await expect(page.locator(".node__input")).toBeFocused();
-  await page.keyboard.type("A fairly long question title", { delay: 15 });
-  await page.keyboard.press("Enter");
+  await typeTitle(page, "A fairly long question title");
   await expect(
     page.locator(".node", { hasText: "A fairly long question title" }),
   ).toBeVisible();
 
-  // Consecutive edits to one node collapse into a single journal entry;
-  // otherwise this would take 27 presses.
   await page.keyboard.press("Control+z");
-  await expect(
-    page.locator(".node", { hasText: "A fairly long question title" }),
-  ).toHaveCount(0);
+  await expect(page.locator(".node")).toHaveCount(before);
 });
 
 test("undo survives a page reload because the history is server-side", async ({

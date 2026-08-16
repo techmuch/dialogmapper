@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/ibis"
 )
 
 // Undo is the feature most capable of destroying work while appearing to help,

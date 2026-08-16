@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/ibis"
 )
 
 func newTestStore(t *testing.T) *Store {

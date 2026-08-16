@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/davidfullmer/dialogmapper/internal/ibis"
+	"github.com/techmuch/dialogmapper/internal/ibis"
 )
 
 // --- maps ------------------------------------------------------------------

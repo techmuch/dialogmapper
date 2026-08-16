@@ -69,9 +69,9 @@ export const InstallationGuide: React.FC = () => {
             </p>
 
             <div className="code-block" style={{ marginBottom: '1rem' }}>
-              <code>go install github.com/davidfullmer/dialogmapper@latest</code>
+              <code>go install github.com/techmuch/dialogmapper@latest</code>
               <button
-                onClick={() => copyCode('go install github.com/davidfullmer/dialogmapper@latest', 1)}
+                onClick={() => copyCode('go install github.com/techmuch/dialogmapper@latest', 1)}
                 className="code-copy-btn"
               >
                 {copiedIndex === 1 ? <Check style={{ width: '0.9rem', height: '0.9rem', color: '#34d399' }} /> : <Copy style={{ width: '0.9rem', height: '0.9rem' }} />}
@@ -86,7 +86,7 @@ export const InstallationGuide: React.FC = () => {
           <div className="card" style={{ maxWidth: '850px', margin: '0 auto', background: 'var(--bg-card)' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Download style={{ color: 'var(--accent-cyan)' }} />
-              <span>Download Standalone Binary (v0.0.10)</span>
+              <span>Download Standalone Binary (v0.0.11)</span>
             </h3>
             <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
               No Go or Node install required on target machines. Download the binary for your operating system:
@@ -171,7 +171,7 @@ make install`}</pre>
               <div style={{ background: 'rgba(129, 140, 248, 0.1)', color: 'var(--ibis-idea)', width: '2rem', height: '2rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, marginBottom: '1rem' }}>2</div>
               <h4 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Start Local Server & UI</h4>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                Launches HTTP/WebSocket server at <code>:7373</code> and opens browser automatically.
+                Serves at <code>:7373</code> and opens your browser at <code>127.0.0.1</code>. Binds every interface by default and prints a QR for phones, gated by a per-run key.
               </p>
               <div className="code-block" style={{ fontSize: '0.8125rem', padding: '0.6rem 0.8rem' }}>
                 <code>dialogmapper start --open</code>
@@ -185,7 +185,7 @@ make install`}</pre>
                 Converts raw markdown notes into structured IBIS scaffolding automatically.
               </p>
               <div className="code-block" style={{ fontSize: '0.8125rem', padding: '0.6rem 0.8rem' }}>
-                <code>dialogmapper seed -c notes.md</code>
+                <code>dialogmapper seed --context notes.md</code>
               </div>
             </div>
           </div>
