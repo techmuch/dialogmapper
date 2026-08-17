@@ -5,7 +5,7 @@
 # dependencies — not even a Node install on the target machine.
 
 BINARY  := dialogmapper
-VERSION ?= v0.0.15
+VERSION ?= v0.0.16
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .PHONY: all build web website go-build dev test test-e2e e2e-browser lint clean install release
@@ -33,7 +33,7 @@ dev:
 
 test:
 	go test ./...
-	cd web && npm run typecheck
+	cd web && npm run typecheck && npm test
 
 ## test-e2e: drive the built binary in a real browser.
 ## Depends on `build` because the tests run the embedded frontend, not the dev

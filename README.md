@@ -178,10 +178,17 @@ dialogmapper start --no-token          # LAN, no key — anyone who can reach th
 The key lives only in memory and dies with the server.
 
 Phones get a different product, not a shrunken canvas. Someone on a phone is a
-participant rather than a facilitator: they see a reverse-chronological feed,
-search across every map, and tap a node to add a reply. The composer only
-offers moves that are legal against whatever was tapped, so a phone user cannot
-construct an invalid map by accident.
+participant rather than a facilitator: they see the conversation threaded under
+its root questions, search across every map, and tap a node to add a reply. The
+composer only offers moves that are legal against whatever was tapped, so a
+phone user cannot construct an invalid map by accident.
+
+Threads are ordered by their most recent activity rather than by when the
+question was asked, so a live debate under an old question stays at the top.
+Indentation is capped at three levels — deeper than that a phone runs out of
+horizontal room, so those rows name their parent instead. Anything that arrives
+while you are looking is marked new, because threading puts a reply where it
+belongs rather than at the top where you would notice it.
 
 Anything added from a phone appears on the desktop canvas immediately, placed
 by auto-layout.

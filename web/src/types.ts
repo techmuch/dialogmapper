@@ -207,3 +207,23 @@ export const REL_LABELS: Record<Relationship, string> = {
   relates_to: "relates to",
   specializes: "specializes",
 };
+
+/**
+ * Relationships that form the argument tree, used only until the served
+ * grammar arrives — `/api/grammar` marks each rule `hierarchical`, and that is
+ * the authority. `relates_to` is absent because cross-links are its whole
+ * purpose and the server does not cycle-check them.
+ */
+export const HIERARCHICAL_FALLBACK: Relationship[] = [
+  "responds_to",
+  "questions",
+  "supports",
+  "objects_to",
+  "specializes",
+];
+
+/** The hierarchical relationships according to the served grammar. */
+export function hierarchicalRels(g: Grammar | null): Relationship[] {
+  if (!g) return HIERARCHICAL_FALLBACK;
+  return [...new Set(g.rules.filter((r) => r.hierarchical).map((r) => r.relationship))];
+}
