@@ -334,11 +334,6 @@ func (s *Store) UpdateNode(id string, patch NodePatch) (*Node, error) {
 		if !ibis.IsValidNodeType(*patch.Type) {
 			return nil, fmt.Errorf("unknown node type %q", *patch.Type)
 		}
-		// Retyping a node can invalidate edges that were legal before. Check
-		// every incident edge rather than silently leaving a broken graph.
-		if err := s.validateRetype(id, *patch.Type); err != nil {
-			return nil, err
-		}
 		current.Type = *patch.Type
 	}
 	if patch.Title != nil {
@@ -372,6 +367,18 @@ func (s *Store) UpdateNode(id string, patch NodePatch) (*Node, error) {
 	}
 	defer tx.Rollback()
 
+	// Retyping is a structural change: the node's relationships have to be
+	// re-derived, because the grammar decides what an edge *means* from the
+	// types at each end. Planned before the write so a retype with no legal
+	// arrangement is refused without touching anything.
+	var edgesBefore, edgesAfter []Edge
+	if patch.Type != nil && *patch.Type != before.Type {
+		edgesBefore, edgesAfter, err = retypeEdgesTx(tx, id, *patch.Type)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if _, err := tx.Exec(
 		`UPDATE nodes SET type = ?, title = ?, content = ?, updated_at = ?
 		 WHERE id = ?`,
@@ -384,15 +391,28 @@ func (s *Store) UpdateNode(id string, patch NodePatch) (*Node, error) {
 	// previous entry when it is the same actor editing the same node. The
 	// original "before" state is preserved, so one Ctrl-Z reverts the whole
 	// edit rather than one letter of it.
-	if merged, err := mergeEditTx(tx, s.actor, id, current); err != nil {
-		return nil, err
-	} else if !merged {
+	//
+	// A retype never merges: it rewrites edges as well as the node, and folding
+	// that into a previous title edit would leave the journal unable to put the
+	// relationships back.
+	merged := false
+	if len(edgesBefore) == 0 {
+		merged, err = mergeEditTx(tx, s.actor, id, current)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if !merged {
 		if err := clearRedoTx(tx, s.actor); err != nil {
 			return nil, err
 		}
-		if err := recordTx(tx, "", s.actor, ActionUpdateNode,
-			"edited "+describeNode(current),
-			snapshot{Node: &before}, snapshot{Node: current}); err != nil {
+		label := "edited " + describeNode(current)
+		if len(edgesBefore) > 0 {
+			label = fmt.Sprintf("changed %s to %s", describeNode(&before), current.Type)
+		}
+		if err := recordTx(tx, "", s.actor, ActionUpdateNode, label,
+			snapshot{Node: &before, Edges: edgesBefore},
+			snapshot{Node: current, Edges: edgesAfter}); err != nil {
 			return nil, err
 		}
 	}
@@ -627,40 +647,138 @@ func nodeByIDTx(tx *sql.Tx, id string) (*Node, error) {
 	return &n, nil
 }
 
-// validateRetype rejects a type change that would orphan existing edges,
-// naming the specific edge at fault.
-func (s *Store) validateRetype(nodeID string, newType ibis.NodeType) error {
-	rows, err := s.db.Query(
-		`SELECT e.relationship_type, e.source_node_id, e.target_node_id,
-		        sn.type, tn.type
+// retypeEdgesTx re-derives a node's relationships for a new type, returning the
+// edges as they were and as they now are.
+//
+// The relationship on an edge is not an independent fact — it is a reading of
+// the two types at its ends. "Idea responds_to Question" and "Pro supports
+// Idea" are the same arrow described correctly for what sits at each end, so
+// changing a node's type has to relabel its arrows.
+//
+// The earlier version asked the wrong question: whether the *existing*
+// relationship stayed legal under the new type. It almost never does, which
+// made retyping fail nearly every time. The right question is whether the
+// grammar permits *any* relationship between the new type and each neighbour;
+// if it does, that becomes the edge's new label, and only a pair the grammar
+// cannot connect at all is refused.
+func retypeEdgesTx(tx *sql.Tx, nodeID string, newType ibis.NodeType) (before, after []Edge, err error) {
+	rows, err := tx.Query(
+		`SELECT e.id, e.map_id, e.source_node_id, e.target_node_id,
+		        e.relationship_type, e.created_at,
+		        sn.type, tn.type, sn.title, tn.title
 		 FROM edges e
 		 JOIN nodes sn ON sn.id = e.source_node_id
 		 JOIN nodes tn ON tn.id = e.target_node_id
 		 WHERE e.source_node_id = ? OR e.target_node_id = ?`, nodeID, nodeID)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	defer rows.Close()
+
+	type incident struct {
+		edge             Edge
+		srcType, tgtType ibis.NodeType
+		neighbourTitle   string
+		neighbourType    ibis.NodeType
+	}
+	var edges []incident
 	for rows.Next() {
-		var rel ibis.Relationship
-		var srcID, tgtID string
-		var srcType, tgtType ibis.NodeType
-		if err := rows.Scan(&rel, &srcID, &tgtID, &srcType, &tgtType); err != nil {
-			return err
+		var in incident
+		var srcTitle, tgtTitle string
+		if err := rows.Scan(&in.edge.ID, &in.edge.MapID,
+			&in.edge.SourceNodeID, &in.edge.TargetNodeID,
+			&in.edge.Relationship, &in.edge.CreatedAt,
+			&in.srcType, &in.tgtType, &srcTitle, &tgtTitle); err != nil {
+			rows.Close()
+			return nil, nil, err
 		}
-		if srcID == nodeID {
-			srcType = newType
+		// Substitute the new type at whichever end is being retyped, and note
+		// the other end so a refusal can name it.
+		if in.edge.SourceNodeID == nodeID {
+			in.srcType, in.neighbourType, in.neighbourTitle = newType, in.tgtType, tgtTitle
+		} else {
+			in.tgtType, in.neighbourType, in.neighbourTitle = newType, in.srcType, srcTitle
 		}
-		if tgtID == nodeID {
-			tgtType = newType
-		}
-		if err := ibis.ValidateEdge(srcType, tgtType, rel); err != nil {
-			return fmt.Errorf(
-				"cannot change type to %s: an existing edge would become invalid: %w",
-				newType, err)
-		}
+		edges = append(edges, in)
 	}
-	return rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	for _, in := range edges {
+		// Already legal under the new type: leave it alone rather than
+		// churning a relationship the user chose deliberately.
+		if ibis.ValidateEdge(in.srcType, in.tgtType, in.edge.Relationship) == nil {
+			continue
+		}
+
+		newRel, ok := ibis.DefaultRelationship(in.srcType, in.tgtType)
+		if !ok {
+			return nil, nil, fmt.Errorf(
+				"cannot change this to a %s: the IBIS grammar has no relationship "+
+					"between a %s and the %s %q, so the link between them would be "+
+					"meaningless — detach it first",
+				newType, newType, in.neighbourType, truncateTitle(in.neighbourTitle))
+		}
+
+		// Relabelling can turn an associative link into a hierarchical one,
+		// which could close a loop in the argument tree.
+		if ibis.IsHierarchical(newRel) && !ibis.IsHierarchical(in.edge.Relationship) {
+			cyclic, err := reachableTx(tx, in.edge.MapID, in.edge.TargetNodeID, in.edge.SourceNodeID)
+			if err != nil {
+				return nil, nil, err
+			}
+			if cyclic {
+				return nil, nil, fmt.Errorf(
+					"cannot change this to a %s: the link to %q would become a %q "+
+						"and close a loop in the argument tree",
+					newType, truncateTitle(in.neighbourTitle), newRel)
+			}
+		}
+
+		updated := in.edge
+		updated.Relationship = newRel
+
+		// The new label may duplicate an edge that already exists between the
+		// same pair, which the unique index forbids. Drop this one instead:
+		// the relationship it would express is already recorded.
+		var duplicate int
+		if err := tx.QueryRow(
+			`SELECT count(*) FROM edges
+			 WHERE map_id = ? AND source_node_id = ? AND target_node_id = ?
+			   AND relationship_type = ? AND id <> ?`,
+			updated.MapID, updated.SourceNodeID, updated.TargetNodeID,
+			updated.Relationship, updated.ID).Scan(&duplicate); err != nil {
+			return nil, nil, err
+		}
+		if duplicate > 0 {
+			if _, err := tx.Exec(`DELETE FROM edges WHERE id = ?`, in.edge.ID); err != nil {
+				return nil, nil, err
+			}
+			before = append(before, in.edge)
+			continue // no "after" row: this edge is gone
+		}
+
+		if _, err := tx.Exec(
+			`UPDATE edges SET relationship_type = ? WHERE id = ?`,
+			updated.Relationship, updated.ID); err != nil {
+			return nil, nil, err
+		}
+		before = append(before, in.edge)
+		after = append(after, updated)
+	}
+	return before, after, nil
+}
+
+func truncateTitle(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "untitled"
+	}
+	if len(s) > 40 {
+		return s[:40] + "…"
+	}
+	return s
 }
 
 // SetPlacement records a node's position on a map. Called on drag end.

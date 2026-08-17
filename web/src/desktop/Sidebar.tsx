@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { canRetype } from "../grammar";
 import { describe, useGraph } from "../store/useGraph";
 import { useUI } from "../store/useUI";
 import MultiSelectPanel from "./MultiSelectPanel";
@@ -42,6 +43,9 @@ export function Sidebar() {
   }, [selectedId, multiSelected, allNodes]);
   const edges = useGraph((s) => s.edges);
   const nodes = useGraph((s) => s.nodes);
+  // The server's own published ruleset, used to show which type changes are
+  // possible before the user tries one.
+  const grammar = useGraph((s) => s.grammar);
   const maps = useGraph((s) => s.maps);
   const mapId = useGraph((s) => s.mapId);
   const patchNode = useGraph((s) => s.patchNode);
@@ -138,19 +142,38 @@ export function Sidebar() {
         <div className="field">
           <span className="field__label">Type</span>
           <div className="chips">
-            {TYPES.map((t) => (
-              <button
-                key={t}
-                className={`chip chip--${t} ${node.type === t ? "is-on" : ""}`}
-                onClick={() => void patchNode(node.id, { type: t })}
-                // Retyping can invalidate existing edges; the backend rejects
-                // that with an explanation rather than silently breaking the map.
-                title={`Change to ${NODE_LABELS[t]}`}
-              >
-                {NODE_GLYPHS[t]} {NODE_LABELS[t]}
-              </button>
-            ))}
+            {TYPES.map((t) => {
+              // Changing type relabels the node's edges, because a
+              // relationship is a reading of the types at each end. Some
+              // changes have no legal reading at all — nothing connects a Pro
+              // to a Question — so those are shown as unavailable rather than
+              // being offered and then refused.
+              const check = canRetype(grammar, node, t, Object.values(edges), nodes);
+              return (
+                <button
+                  key={t}
+                  className={`chip chip--${t} ${node.type === t ? "is-on" : ""}`}
+                  disabled={!check.ok}
+                  onClick={() => void patchNode(node.id, { type: t })}
+                  title={
+                    check.ok
+                      ? `Change to ${NODE_LABELS[t]} — links are relabelled to match`
+                      : check.reason
+                  }
+                >
+                  {NODE_GLYPHS[t]} {NODE_LABELS[t]}
+                </button>
+              );
+            })}
           </div>
+          {TYPES.some(
+            (t) => !canRetype(grammar, node, t, Object.values(edges), nodes).ok,
+          ) && (
+            <p className="multi__note">
+              Greyed-out types have no legal relationship to something this node is
+              attached to.
+            </p>
+          )}
         </div>
 
         <div className="field">

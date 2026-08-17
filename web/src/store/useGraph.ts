@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { ApiError, CLIENT_ID, api, onMutation } from "../api";
 import { autoLayout } from "../layout/autoLayout";
+import { NODE_LABELS, REL_LABELS } from "../types";
 import type {
   DMEdge,
   DMGroup,
@@ -347,6 +348,13 @@ export const useGraph = create<GraphState>((set, get) => ({
 
   patchNode: async (id, patch) => {
     const before = get().nodes[id];
+    const retyping = patch.type !== undefined && patch.type !== before?.type;
+    // A retype relabels the node's edges, so the relationships on screen are
+    // about to be stale. Remember them to report what actually changed.
+    const relsBefore = retyping
+      ? new Map(Object.values(get().edges).map((e) => [e.id, e.relationshipType]))
+      : null;
+
     try {
       const updated = await api.updateNode(id, patch);
       set((s) => ({
@@ -355,6 +363,23 @@ export const useGraph = create<GraphState>((set, get) => ({
           [id]: { ...updated, placement: before?.placement ?? updated.placement },
         },
       }));
+
+      if (retyping) {
+        await get().reload();
+        const changed = Object.values(get().edges).filter(
+          (e) => relsBefore!.get(e.id) && relsBefore!.get(e.id) !== e.relationshipType,
+        );
+        // Relabelling is a structural change the user did not explicitly ask
+        // for, so it is stated rather than left to be noticed.
+        get().toast(
+          changed.length === 0
+            ? `Now a ${NODE_LABELS[updated.type]}.`
+            : `Now a ${NODE_LABELS[updated.type]} — ${changed.length} link${
+                changed.length > 1 ? "s" : ""
+              } relabelled to ${[...new Set(changed.map((e) => REL_LABELS[e.relationshipType]))].join(", ")}.`,
+          "info",
+        );
+      }
     } catch (err) {
       get().toast(describe(err));
     }

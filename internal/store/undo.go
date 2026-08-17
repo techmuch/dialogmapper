@@ -302,11 +302,16 @@ func applyInverseTx(tx *sql.Tx, action UndoAction, payload string, redo bool) er
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(
+		if _, err := tx.Exec(
 			`UPDATE nodes SET type = ?, title = ?, content = ?, updated_at = ?
 			 WHERE id = ?`,
-			snap.Node.Type, snap.Node.Title, content, nowISO(), snap.Node.ID)
-		return err
+			snap.Node.Type, snap.Node.Title, content, nowISO(), snap.Node.ID); err != nil {
+			return err
+		}
+		// A retype relabels the node's edges, so reversing it has to put those
+		// labels back — otherwise undo would restore an Idea whose links still
+		// read as if it were a Pro.
+		return restoreEdgesTx(tx, snap.Edges)
 
 	case ActionBulkUpdate:
 		// Both directions are the same write: put every recorded node back the
@@ -456,6 +461,12 @@ func removePlacementsTx(tx *sql.Tx, snap snapshot) error {
 	return nil
 }
 
+// restoreEdgesTx puts recorded edges back exactly as they were.
+//
+// It handles two distinct cases, because both arise: an edge that was deleted
+// and must be recreated, and an edge that still exists under the same id but
+// whose relationship was relabelled by a retype. Inserting blindly would fail
+// on the primary key for the second case, so the write upserts by id.
 func restoreEdgesTx(tx *sql.Tx, edges []Edge) error {
 	for _, e := range edges {
 		// Restoring an edge whose other endpoint has since been deleted is not
@@ -470,12 +481,22 @@ func restoreEdgesTx(tx *sql.Tx, edges []Edge) error {
 		if ok < 2 {
 			continue
 		}
+		// Anything else already occupying this exact relationship would
+		// violate the unique index. It cannot be the edge we are restoring —
+		// that one is matched by id — so it is a leftover and gives way.
+		if _, err := tx.Exec(
+			`DELETE FROM edges
+			 WHERE map_id = ? AND source_node_id = ? AND target_node_id = ?
+			   AND relationship_type = ? AND id <> ?`,
+			e.MapID, e.SourceNodeID, e.TargetNodeID, e.Relationship, e.ID); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(
 			`INSERT INTO edges (id, map_id, source_node_id, target_node_id,
 			                    relationship_type, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?)
-			 ON CONFLICT (map_id, source_node_id, target_node_id, relationship_type)
-			 DO NOTHING`,
+			 ON CONFLICT (id) DO UPDATE SET
+			     relationship_type = excluded.relationship_type`,
 			e.ID, e.MapID, e.SourceNodeID, e.TargetNodeID, e.Relationship,
 			orDefault(e.CreatedAt, nowISO())); err != nil {
 			return fmt.Errorf("restore edge: %w", err)

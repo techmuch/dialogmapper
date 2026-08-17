@@ -107,8 +107,8 @@ const uiFeatures: UiFeature[] = [
     category: 'sidebar',
     name: 'Type & Status Selectors',
     description: 'Change a node’s IBIS type or lifecycle status.',
-    howToUse: 'Click a Type chip (Question, Idea, Pro, Con, Note) or Status chip (Open, Resolved, Parked, Rejected).',
-    whyItMatters: 'Server validates edge rules when re-typing, preventing illegal connections.'
+    howToUse: 'Click a Type chip (Question, Idea, Pro, Con, Note) or Status chip (Open, Resolved, Parked, Rejected). Changing type relabels the node\'s edges to match — an Idea that "responds to" a Question becomes a Question that "questions" it. Types with no legal relationship to a neighbour are greyed out with the reason.',
+    whyItMatters: 'A relationship is a reading of the types at each end of the arrow, so changing one end has to relabel it. Showing impossible types as unavailable is better than offering them and refusing afterwards — and one ⌘Z reverses both the type and the relabelled links.'
   },
   {
     id: 'sidebar-markdown',

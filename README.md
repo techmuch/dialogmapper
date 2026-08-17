@@ -73,6 +73,19 @@ needs a mouse correction afterwards.
 Question's most recent Idea rather than failing, because a grammar error
 mid-sentence costs more than a sensible guess.
 
+## Changing a node's type
+
+A relationship is a reading of the two types at the ends of an arrow: "Idea
+responds to Question" and "Pro supports Idea" describe the same shape of link
+correctly for what sits at each end. So changing a node's type relabels its
+edges — retype an Idea to a Question and its `responds to` becomes `questions`.
+
+Some changes have no legal reading at all. Nothing in IBIS connects a Pro to a
+Question, so an Idea with arguments hanging off it cannot become one; those
+types are shown greyed out with the reason, rather than being offered and then
+refused. The panel is advisory — the server still refuses anything illegal —
+but it reads the same published grammar, so the two agree.
+
 ## Editing several nodes at once
 
 Select more than one node and the details panel switches to the things that

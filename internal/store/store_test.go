@@ -162,18 +162,151 @@ func TestTransclusionSharesOneNode(t *testing.T) {
 	}
 }
 
-func TestRetypeRejectedWhenItWouldBreakAnEdge(t *testing.T) {
+// Retyping re-derives relationships rather than checking whether the old one
+// survives. The relationship on an edge is a reading of the two types at its
+// ends, so changing a type has to relabel the arrow.
+func TestRetypeRelabelsTheEdge(t *testing.T) {
+	s := newTestStore(t)
+	mapID, qID, ideaID := seedArgument(t, s)
+
+	// Idea --responds_to--> Question. As a Question it should read
+	// "questions" instead — the same arrow, described correctly.
+	if _, err := s.UpdateNode(ideaID, NodePatch{Type: typePtr(ibis.Question)}); err != nil {
+		t.Fatalf("retyping an Idea to a Question should be allowed: %v", err)
+	}
+
+	g, err := s.Graph(mapID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Edges) != 1 {
+		t.Fatalf("expected the edge to survive, got %d", len(g.Edges))
+	}
+	e := g.Edges[0]
+	if e.Relationship != ibis.Questions {
+		t.Errorf("relationship = %q, want questions", e.Relationship)
+	}
+	if e.SourceNodeID != ideaID || e.TargetNodeID != qID {
+		t.Error("the edge should keep its direction")
+	}
+	// And the result is a legal graph, which is the whole point.
+	if err := ibis.ValidateEdge(ibis.Question, ibis.Question, e.Relationship); err != nil {
+		t.Errorf("retype produced an illegal edge: %v", err)
+	}
+}
+
+func TestRetypeLeavesAnAlreadyLegalEdgeAlone(t *testing.T) {
+	s := newTestStore(t)
+	m, err := s.CreateMap("M", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A free-standing Idea, so the only relationship in play is the one below.
+	idea, _, err := s.CreateNode(NewNodeInput{Type: ibis.Idea, Title: "An idea", MapID: m.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pro, _, err := s.CreateNode(NewNodeInput{
+		Type: ibis.Pro, Title: "An argument", MapID: m.ID,
+		ParentID: idea.ID, Relationship: ibis.Supports,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A Pro may support a Con as readily as an Idea, so this relationship is
+	// still legal and must not be churned into something else.
+	if _, err := s.UpdateNode(idea.ID, NodePatch{Type: typePtr(ibis.Con)}); err != nil {
+		t.Fatalf("Idea -> Con should be allowed here: %v", err)
+	}
+
+	g, _ := s.Graph(m.ID)
+	if len(g.Edges) != 1 {
+		t.Fatalf("edges = %d, want 1", len(g.Edges))
+	}
+	if g.Edges[0].SourceNodeID != pro.ID || g.Edges[0].Relationship != ibis.Supports {
+		t.Errorf("a still-legal relationship was changed to %q", g.Edges[0].Relationship)
+	}
+}
+
+// Only a pair the grammar cannot connect at all is refused, and the refusal
+// says which neighbour is in the way.
+func TestRetypeRefusedWhenNoRelationshipExists(t *testing.T) {
 	s := newTestStore(t)
 	_, _, ideaID := seedArgument(t, s)
 
-	// The Idea answers a Question. Turning it into a Pro would leave a
-	// "Pro responds_to Question" edge, which the grammar forbids.
+	// Nothing in IBIS connects a Pro to a Question: an argument supports an
+	// answer, not the issue itself.
 	_, err := s.UpdateNode(ideaID, NodePatch{Type: typePtr(ibis.Pro)})
 	if err == nil {
-		t.Fatal("retyping an Idea with a responds_to edge into a Pro should fail")
+		t.Fatal("Idea -> Pro should be refused while it answers a Question")
 	}
-	if !strings.Contains(err.Error(), "existing edge") {
-		t.Errorf("error should name the real problem, got: %v", err)
+	for _, want := range []string{"pro", "question", "Ship on Fridays?"} {
+		if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(want)) {
+			t.Errorf("error should mention %q, got: %v", want, err)
+		}
+	}
+}
+
+func TestRefusedRetypeChangesNothing(t *testing.T) {
+	s := newTestStore(t)
+	mapID, _, ideaID := seedArgument(t, s)
+
+	before, _ := s.Graph(mapID)
+	if _, err := s.UpdateNode(ideaID, NodePatch{Type: typePtr(ibis.Pro)}); err == nil {
+		t.Fatal("expected a refusal")
+	}
+
+	after, _ := s.Graph(mapID)
+	node, _ := s.GetNode(ideaID, mapID)
+	if node.Type != ibis.Idea {
+		t.Errorf("node type changed to %q despite the refusal", node.Type)
+	}
+	if len(after.Edges) != len(before.Edges) {
+		t.Errorf("edges changed despite the refusal: %d -> %d",
+			len(before.Edges), len(after.Edges))
+	}
+	if after.Edges[0].Relationship != before.Edges[0].Relationship {
+		t.Error("a relationship was relabelled despite the refusal")
+	}
+}
+
+// Undo of a retype has to put the relationships back too, or it would restore
+// an Idea whose links still read as if it were something else.
+func TestUndoRetypeRestoresTheEdgeLabel(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As("alice-retype")
+	m, _ := as.CreateMap("M", "")
+	q, _, _ := as.CreateNode(NewNodeInput{Type: ibis.Question, Title: "Q", MapID: m.ID})
+	idea, _, _ := as.CreateNode(NewNodeInput{
+		Type: ibis.Idea, Title: "An idea", MapID: m.ID,
+		ParentID: q.ID, Relationship: ibis.RespondsTo,
+	})
+	// Break the merge run so the retype is its own journal entry.
+	as.CreateNode(NewNodeInput{Type: ibis.Note, Title: "Unrelated", MapID: m.ID})
+
+	if _, err := as.UpdateNode(idea.ID, NodePatch{Type: typePtr(ibis.Question)}); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := s.Graph(m.ID)
+	if g.Edges[0].Relationship != ibis.Questions {
+		t.Fatalf("setup: relationship = %q", g.Edges[0].Relationship)
+	}
+
+	if _, err := as.Undo("alice-retype", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	back, _ := s.GetNode(idea.ID, m.ID)
+	if back.Type != ibis.Idea {
+		t.Errorf("type = %q after undo, want idea", back.Type)
+	}
+	g, _ = s.Graph(m.ID)
+	if len(g.Edges) != 1 {
+		t.Fatalf("edges after undo = %d, want 1", len(g.Edges))
+	}
+	if g.Edges[0].Relationship != ibis.RespondsTo {
+		t.Errorf("relationship = %q after undo, want responds_to", g.Edges[0].Relationship)
 	}
 }
 
