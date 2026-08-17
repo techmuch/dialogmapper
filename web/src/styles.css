@@ -365,6 +365,17 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .chip--con.is-on  { background: var(--con); }
 .chip__text, .chip__x { background: none; border: none; cursor: pointer; padding: 0; color: inherit; }
 
+/* A type this node cannot become. Deliberately not `disabled`: the click has
+   to land so the panel can say what is in the way. `not-allowed` signals that
+   nothing will change, and the dashed edge distinguishes it from a merely
+   unselected chip without relying on opacity alone. */
+.chip.is-unavailable {
+  opacity: .45;
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.chip.is-unavailable:hover { opacity: .65; }
+
 /* Tri-state chips for a multi-node selection.
    `is-all`    — every selected node has this value
    `is-some`   — only some do; faded, but still clickable, because the point is

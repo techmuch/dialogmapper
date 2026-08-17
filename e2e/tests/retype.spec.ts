@@ -76,18 +76,60 @@ test("a Note can be retyped and its link relabelled", async ({ page, dm }) => {
  * Not every change is possible, and the ones that are not should be visibly
  * unavailable rather than offered and then refused.
  */
-test("impossible types are disabled with a reason", async ({ page, dm }) => {
+test("impossible types are marked unavailable with a reason", async ({ page, dm }) => {
   await openCanvas(page, dm);
   // The Idea is pinned: a Pro and a Con hang off it, and neither can attach to
   // a Question, so it cannot become one.
   await openSidebarFor(page, "Add a read-through cache");
 
   const question = typeChip(page, "Question");
-  await expect(question).toBeDisabled();
+  await expect(question).toHaveAttribute("data-unavailable", "true");
+  await expect(question).toHaveClass(/is-unavailable/);
   await expect(question).toHaveAttribute("title", /cannot attach|Detach/i);
 
   // The panel says why, rather than leaving a mysteriously dead control.
   await expect(page.locator(".sidebar")).toContainText("no legal relationship");
+});
+
+/**
+ * A greyed-out control that does nothing on click looks broken. The chips stay
+ * clickable so the click gets an answer instead of being swallowed.
+ */
+test("clicking an unavailable type says what is in the way", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await openSidebarFor(page, "Add a read-through cache");
+
+  await typeChip(page, "Question").click();
+
+  const toast = page.locator(".toast--error");
+  await expect(toast).toBeVisible();
+  // Naming the neighbour is the point: it tells you what to detach.
+  await expect(toast).toContainText(/Cuts p99|Invalidation/);
+
+  // And it really was refused — nothing changed.
+  await expect(
+    page.locator(".node--idea", { hasText: "Add a read-through cache" }),
+  ).toBeVisible();
+  expect(await edgeLabels(page, dm)).toContain("responds_to");
+});
+
+/**
+ * After a retype the whole graph is refetched, which used to run through the
+ * same path as switching maps and therefore cleared the selection — so the
+ * panel emptied itself at the moment you wanted to see the result.
+ */
+test("the node stays selected after its type changes", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await openSidebarFor(page, "Cuts p99 to 200ms");
+
+  await typeChip(page, "Con").click();
+  await expect(page.locator(".toast")).toContainText("Now a Con");
+
+  // The panel is still showing this node, now as a Con.
+  await expect(page.locator(".sidebar")).toContainText("Cuts p99 to 200ms");
+  await expect(typeChip(page, "Con")).toHaveClass(/is-on/);
+  // And it is still selected on the canvas, so the next keystroke acts on it.
+  await expect(page.locator(".react-flow__node.selected")).toHaveCount(1);
 });
 
 /**
@@ -104,8 +146,12 @@ test("an argument on an Idea cannot become another Idea", async ({ page, dm }) =
   await openSidebarFor(page, "Invalidation is forever");
 
   const idea = typeChip(page, "Idea");
-  await expect(idea).toBeDisabled();
+  await expect(idea).toHaveAttribute("data-unavailable", "true");
   await expect(idea).toHaveAttribute("title", /cannot attach|no legal|Detach/i);
+
+  // Clicking it refuses out loud rather than doing nothing.
+  await idea.click();
+  await expect(page.locator(".toast--error")).toBeVisible();
 
   // And the graph is untouched: the Con still objects to the Idea.
   const labels = await edgeLabels(page, dm);
@@ -119,9 +165,9 @@ test("a leaf node offers every type the grammar allows", async ({ page, dm }) =>
 
   // A Pro supporting an Idea can become a Con or a Note; it cannot become a
   // Question, because nothing connects a Question to an Idea in that
-  // direction. Whatever is enabled must actually work.
+  // direction. Whatever is offered must actually work.
   for (const label of ["Con", "Note"]) {
-    await expect(typeChip(page, label)).toBeEnabled();
+    await expect(typeChip(page, label)).toHaveAttribute("data-unavailable", "false");
   }
 });
 
@@ -142,15 +188,17 @@ test("undoing a retype restores both the type and the relationship", async ({
   expect(labels).toContain("supports");
 });
 
-test("no enabled type change produces an error", async ({ page, dm }) => {
+test("no offered type change produces an error", async ({ page, dm }) => {
   await openCanvas(page, dm);
 
   // The complaint that started this: clicking a type essentially always
-  // errored. Anything still offered must now succeed.
+  // errored. Anything still offered must now succeed. The unavailable ones are
+  // allowed to complain — that is their job — so they are skipped here and
+  // covered above.
   for (const label of ["Con", "Note", "Idea"]) {
     await openSidebarFor(page, "Cuts p99 to 200ms");
     const chip = typeChip(page, label);
-    if (!(await chip.isEnabled())) continue;
+    if ((await chip.getAttribute("data-unavailable")) === "true") continue;
     await chip.click();
     await page.waitForTimeout(500);
     await expect(page.locator(".toast--error")).toHaveCount(0);

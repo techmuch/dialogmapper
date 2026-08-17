@@ -176,9 +176,40 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
+  /**
+   * Refetches the current map in place.
+   *
+   * Deliberately not `openMap(mapId)`, which clears the selection and flips
+   * `loading`. That is right when you switch maps and wrong for a refetch: a
+   * retype or an undo would drop the node out of the details panel, so the
+   * panel emptied itself exactly when you wanted to see the result of what you
+   * just did.
+   *
+   * The selection is pruned to nodes that still exist, since a reload may
+   * follow a delete.
+   */
   reload: async () => {
     const id = get().mapId;
-    if (id) await get().openMap(id);
+    if (!id) return;
+    try {
+      const g = await api.graph(id);
+      const nodes = byId(g.nodes);
+      set((s) => ({
+        map: g.map,
+        nodes,
+        edges: byId(g.edges),
+        groups: byId(g.groups),
+        selectedId: s.selectedId && nodes[s.selectedId] ? s.selectedId : null,
+        multiSelected: new Set([...s.multiSelected].filter((n) => nodes[n])),
+      }));
+      // A reload can be the first sight of nodes made blind by an agent, a
+      // phone or the CLI, which arrive with no coordinates.
+      if (g.nodes.some((n) => n.placement?.x == null)) {
+        await get().runAutoLayout(true);
+      }
+    } catch (err) {
+      get().toast(describe(err));
+    }
   },
 
   select: (id) => set({ selectedId: id, multiSelected: new Set(), editingId: null }),

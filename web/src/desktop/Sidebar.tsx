@@ -146,15 +146,34 @@ export function Sidebar() {
               // Changing type relabels the node's edges, because a
               // relationship is a reading of the types at each end. Some
               // changes have no legal reading at all — nothing connects a Pro
-              // to a Question — so those are shown as unavailable rather than
-              // being offered and then refused.
+              // to a Question — so those are shown as unavailable.
+              //
+              // Unavailable, not `disabled`: a disabled button swallows the
+              // click and explains nothing, so the greying looks like a bug
+              // unless you happen to hover for a tooltip. Clicking one says
+              // why it cannot be done, which is the answer the click was
+              // asking for.
               const check = canRetype(grammar, node, t, Object.values(edges), nodes);
               return (
                 <button
                   key={t}
-                  className={`chip chip--${t} ${node.type === t ? "is-on" : ""}`}
-                  disabled={!check.ok}
-                  onClick={() => void patchNode(node.id, { type: t })}
+                  className={`chip chip--${t} ${node.type === t ? "is-on" : ""} ${
+                    check.ok ? "" : "is-unavailable"
+                  }`}
+                  // Not `aria-disabled` either: the control does respond, so
+                  // announcing it as disabled would be a lie and assistive
+                  // tech would skip it. The label carries the state instead.
+                  data-unavailable={String(!check.ok)}
+                  aria-label={
+                    check.ok
+                      ? undefined
+                      : `${NODE_LABELS[t]} — unavailable. ${check.reason ?? ""}`
+                  }
+                  onClick={() =>
+                    check.ok
+                      ? void patchNode(node.id, { type: t })
+                      : toast(check.reason ?? `Cannot become a ${NODE_LABELS[t]}.`, "error")
+                  }
                   title={
                     check.ok
                       ? `Change to ${NODE_LABELS[t]} — links are relabelled to match`
@@ -171,7 +190,7 @@ export function Sidebar() {
           ) && (
             <p className="multi__note">
               Greyed-out types have no legal relationship to something this node is
-              attached to.
+              attached to. Click one to see what is in the way.
             </p>
           )}
         </div>

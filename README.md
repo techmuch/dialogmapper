@@ -85,9 +85,13 @@ Question, so an Idea with arguments hanging off it cannot become one. Nor does
 an Idea attach to another Idea, so a Con objecting to an Idea cannot become a
 second Idea — two Ideas under one Question are competing answers, and that
 competition is carried by the Pros and Cons on each, not by a link between
-them. Those types are shown greyed out with the reason, rather than being
-offered and then refused. The panel is advisory — the server still refuses
-anything illegal — but it reads the same published grammar, so the two agree.
+them. Those types are greyed out, and clicking one says which neighbour is in
+the way rather than doing nothing. The panel is advisory — the server still
+refuses anything illegal — but it reads the same published grammar, so the two
+agree.
+
+The node stays selected through a retype, so the details panel keeps showing
+what you just changed.
 
 ## Editing several nodes at once
 
