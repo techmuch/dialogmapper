@@ -90,6 +90,29 @@ test("impossible types are disabled with a reason", async ({ page, dm }) => {
   await expect(page.locator(".sidebar")).toContainText("no legal relationship");
 });
 
+/**
+ * An argument on an Idea cannot become a second Idea.
+ *
+ * This slipped through the first time because the grammar had a `specializes`
+ * rule accepting a Question *or* an Idea at both ends, which quietly made
+ * "Idea specializes Idea" legal. IBIS has no such link: two Ideas under one
+ * Question are competing answers, and the competition lives in the Pros and
+ * Cons on each rather than in an arrow between them.
+ */
+test("an argument on an Idea cannot become another Idea", async ({ page, dm }) => {
+  await openCanvas(page, dm);
+  await openSidebarFor(page, "Invalidation is forever");
+
+  const idea = typeChip(page, "Idea");
+  await expect(idea).toBeDisabled();
+  await expect(idea).toHaveAttribute("title", /cannot attach|no legal|Detach/i);
+
+  // And the graph is untouched: the Con still objects to the Idea.
+  const labels = await edgeLabels(page, dm);
+  expect(labels).toContain("objects_to");
+  expect(labels.filter((l) => l === "specializes")).toHaveLength(0);
+});
+
 test("a leaf node offers every type the grammar allows", async ({ page, dm }) => {
   await openCanvas(page, dm);
   await openSidebarFor(page, "Cuts p99 to 200ms");

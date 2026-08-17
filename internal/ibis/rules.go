@@ -52,7 +52,7 @@ const (
 	ObjectsTo Relationship = "objects_to"
 	// RelatesTo is the deliberately weak link for context. Involves a Note.
 	RelatesTo Relationship = "relates_to"
-	// Specializes narrows a question or idea into a more specific one.
+	// Specializes narrows a broad question into a more specific one.
 	Specializes Relationship = "specializes"
 )
 
@@ -122,11 +122,20 @@ var rules = []rule{
 		label:        "anything relates to a Note",
 	},
 	{
+		// Issue specialization, from Rittel's original IBIS: a narrower issue
+		// standing under a broader one.
+		//
+		// Questions only. Allowing this between Ideas made "Idea specializes
+		// Idea" legal, which IBIS does not have — an Idea answers a Question,
+		// so two Ideas are alternatives to each other rather than one standing
+		// under the other. Anything worth saying about the relationship
+		// between two Ideas is really a Question about them, or a Pro or Con
+		// on one of them.
 		rel:          Specializes,
-		sources:      []NodeType{Question, Idea},
-		targets:      []NodeType{Question, Idea},
+		sources:      []NodeType{Question},
+		targets:      []NodeType{Question},
 		hierarchical: true,
-		label:        "a Question or Idea specializes another of the same kind",
+		label:        "a Question specializes a broader Question",
 	},
 }
 

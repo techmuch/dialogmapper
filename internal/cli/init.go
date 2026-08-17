@@ -169,7 +169,13 @@ legal moves:
 | Pro → **supports** → Idea (or another argument) | evidence in favour |
 | Con → **objects_to** → Idea (or another argument) | evidence against |
 | Note → **relates_to** → anything | context with no argumentative force |
-| Question/Idea → **specializes** → same type | narrowing scope |
+| Question → **specializes** → Question | narrowing a broad issue |
+
+Note what is *not* here: an Idea never attaches to another Idea. Two Ideas
+under the same Question are competing answers, and that competition is
+expressed by the Pros and Cons hanging off each one, not by a link between
+them. If you want to say one Idea is a refinement of another, ask a Question
+about the first and answer it with the second.
 
 The backend rejects anything else with an explanation of what would have been
 legal, so it is safe to try. Run ` + "`dialogmapper grammar --json`" + ` to get

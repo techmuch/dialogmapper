@@ -248,6 +248,48 @@ func TestRetypeRefusedWhenNoRelationshipExists(t *testing.T) {
 	}
 }
 
+// TestRetypeConToIdeaIsRefused covers the case that exposed the grammar bug:
+// a Con hanging off an Idea could be retyped into a second Idea, leaving
+// Idea --specializes--> Idea. That link had no business existing — an Idea
+// answers a Question, so two Ideas are competing answers rather than one
+// standing under the other. The retype machinery was doing its job; the rule
+// it consulted was wrong.
+func TestRetypeConToIdeaIsRefused(t *testing.T) {
+	s := newTestStore(t)
+	m, err := s.CreateMap("M", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idea, _, err := s.CreateNode(NewNodeInput{Type: ibis.Idea, Title: "Deploy on Fridays", MapID: m.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	con, _, err := s.CreateNode(NewNodeInput{
+		Type: ibis.Con, Title: "Nobody is around to roll back", MapID: m.ID,
+		ParentID: idea.ID, Relationship: ibis.ObjectsTo,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.UpdateNode(con.ID, NodePatch{Type: typePtr(ibis.Idea)}); err == nil {
+		t.Fatal("Con -> Idea should be refused while it objects to an Idea")
+	}
+
+	// The Con is still a Con and still objects to the Idea.
+	got, err := s.GetNode(con.ID, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != ibis.Con {
+		t.Errorf("node became %q despite the refusal", got.Type)
+	}
+	g, _ := s.Graph(m.ID)
+	if len(g.Edges) != 1 || g.Edges[0].Relationship != ibis.ObjectsTo {
+		t.Errorf("edges = %+v, want one objects_to", g.Edges)
+	}
+}
+
 func TestRefusedRetypeChangesNothing(t *testing.T) {
 	s := newTestStore(t)
 	mapID, _, ideaID := seedArgument(t, s)

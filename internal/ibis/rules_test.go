@@ -41,6 +41,8 @@ func TestValidateEdge_RejectsNonsense(t *testing.T) {
 		{Pro, Question, Supports, "a Pro supports an Idea, not a bare Question"},
 		{Con, Question, ObjectsTo, "a Con objects to an Idea, not a bare Question"},
 		{Idea, Idea, RespondsTo, "an Idea does not respond to another Idea"},
+		{Idea, Idea, Specializes, "an Idea does not stand under another Idea"},
+		{Question, Idea, Specializes, "specialization is between issues, not answers"},
 		{Note, Question, Supports, "a Note carries no argumentative force"},
 		{Idea, Question, Supports, "an Idea responds; it does not support"},
 		{Pro, Note, Supports, "supporting a Note is meaningless"},
@@ -99,6 +101,61 @@ func TestDefaultRelationship(t *testing.T) {
 	// guessing one would silently corrupt the argument structure.
 	if _, ok := DefaultRelationship(Pro, Question); ok {
 		t.Error("Pro -> Question should have no default relationship")
+	}
+}
+
+// TestIdeasDoNotAttachToIdeas pins the rule directly, across every
+// relationship rather than one at a time.
+//
+// An Idea answers a Question, so two Ideas are alternatives to each other —
+// neither stands under the other. A single over-broad rule (specializes used
+// to accept Question *or* Idea at both ends) made this legal, which showed up
+// as being able to retype a Con hanging off an Idea into a second Idea.
+func TestIdeasDoNotAttachToIdeas(t *testing.T) {
+	for _, rel := range Relationships {
+		if err := ValidateEdge(Idea, Idea, rel); err == nil {
+			t.Errorf("idea --%s--> idea should be illegal", rel)
+		}
+	}
+	if _, ok := DefaultRelationship(Idea, Idea); ok {
+		t.Error("there should be no default relationship between two Ideas")
+	}
+}
+
+// TestUnconnectablePairs states the shape of the grammar as a whole, so a
+// future rule that is too broad fails here rather than being discovered by a
+// user retyping a node into something the model does not have.
+func TestUnconnectablePairs(t *testing.T) {
+	// Pairs that no relationship may connect, in this direction.
+	forbidden := []struct {
+		src, tgt NodeType
+		why      string
+	}{
+		{Idea, Idea, "Ideas are alternatives, not a hierarchy"},
+		{Pro, Question, "an argument supports an answer, not the issue"},
+		{Con, Question, "an argument rebuts an answer, not the issue"},
+		{Idea, Pro, "an Idea does not hang off an argument"},
+		{Idea, Con, "an Idea does not hang off an argument"},
+		{Question, Question, ""}, // connectable — asserted separately below
+	}
+	for _, c := range forbidden {
+		if c.why == "" {
+			continue
+		}
+		if _, ok := DefaultRelationship(c.src, c.tgt); ok {
+			t.Errorf("%s -> %s should not be connectable: %s", c.src, c.tgt, c.why)
+		}
+	}
+
+	// And the pairs that must stay connectable, so this test cannot pass by
+	// making the grammar uselessly strict.
+	for _, c := range []struct{ src, tgt NodeType }{
+		{Idea, Question}, {Pro, Idea}, {Con, Idea},
+		{Question, Idea}, {Question, Question}, {Note, Idea}, {Idea, Note},
+	} {
+		if _, ok := DefaultRelationship(c.src, c.tgt); !ok {
+			t.Errorf("%s -> %s must remain connectable", c.src, c.tgt)
+		}
 	}
 }
 

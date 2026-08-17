@@ -81,10 +81,13 @@ correctly for what sits at each end. So changing a node's type relabels its
 edges — retype an Idea to a Question and its `responds to` becomes `questions`.
 
 Some changes have no legal reading at all. Nothing in IBIS connects a Pro to a
-Question, so an Idea with arguments hanging off it cannot become one; those
-types are shown greyed out with the reason, rather than being offered and then
-refused. The panel is advisory — the server still refuses anything illegal —
-but it reads the same published grammar, so the two agree.
+Question, so an Idea with arguments hanging off it cannot become one. Nor does
+an Idea attach to another Idea, so a Con objecting to an Idea cannot become a
+second Idea — two Ideas under one Question are competing answers, and that
+competition is carried by the Pros and Cons on each, not by a link between
+them. Those types are shown greyed out with the reason, rather than being
+offered and then refused. The panel is advisory — the server still refuses
+anything illegal — but it reads the same published grammar, so the two agree.
 
 ## Editing several nodes at once
 
