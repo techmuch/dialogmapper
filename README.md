@@ -61,7 +61,7 @@ needs a mouse correction afterwards.
 | `Enter` | Edit the title; `Enter` again commits and keeps the node selected |
 | `←↑→↓` | Move the selection to the nearest node in that direction |
 | `Space` | Centre on the selection, or fit the whole map |
-| `l` | Tidy up with auto-layout |
+| `l` | Tidy up, and save the result as if you had dragged each node there |
 | `/` | Search every map and insert an existing node |
 | `g` | Group the selected nodes so they move together |
 | `a` | Select everything currently visible |
@@ -149,6 +149,26 @@ Consecutive edits to the same node collapse into one entry, so undoing a typed
 title takes one keystroke rather than one per character. Making a new change
 after undoing discards the redo tail, which is the standard rule — replaying a
 redo against a world that has moved on is how undo systems corrupt state.
+
+## Layout
+
+Auto layout is on by default and is a *view*, not a stored arrangement. It
+recomputes the tidy tree from the graph on every change, so the map is always
+what you would get by holding down `l`.
+
+Because it never writes, a hand-arranged map survives a trip through it: turn
+auto off and every node is exactly where its owner left it. Earlier this ran
+once when you switched it on and then never again, so nodes added afterwards
+kept the crude offset guessed from their parent and branches piled up on top of
+each other.
+
+**Dragging any node hands control back.** The visible auto positions are saved
+first — the same write `l` performs — so nothing except the node under your
+cursor moves. Without that the rest of the map would snap back to whatever was
+saved before auto was switched on, mid-drag.
+
+`l` is the explicit "commit this arrangement": it lays out and saves, leaving
+the map indistinguishable from one where each node was dragged into place.
 
 ## Filtering
 

@@ -1,6 +1,7 @@
 import { memo, useRef, useState } from "react";
 import { useStore, type NodeProps } from "@xyflow/react";
 import { useGraph } from "../store/useGraph";
+import { useUI } from "../store/useUI";
 import type { DMGroup } from "../types";
 
 export interface GroupBoxData extends Record<string, unknown> {
@@ -60,6 +61,17 @@ function GroupBoxImpl({ data }: NodeProps) {
     // double-click that opens the rename field.
     if ((e.target as HTMLElement).closest(".group__label")) return;
     e.stopPropagation(); // do not pan the canvas
+
+    // Same handoff as dragging a single node: arranging a group by hand is a
+    // statement that you want to place things yourself. Auto layout derives
+    // positions and would otherwise simply overrule the drag — the members'
+    // saved placements would move while the screen showed the computed tree,
+    // so the group would appear not to move at all.
+    if (useUI.getState().layoutMode === "auto") {
+      void useGraph.getState().runAutoLayout(true);
+      useUI.getState().setLayoutMode("freeform");
+    }
+
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     drag.current = { lastX: e.clientX, lastY: e.clientY, total: { x: 0, y: 0 } };
     setDragging(true);

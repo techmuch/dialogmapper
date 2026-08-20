@@ -21,7 +21,7 @@ import GroupBox from "./GroupBox";
 import NodeCard, { type NodeCardData } from "./NodeCard";
 import { useKeyboard } from "./useKeyboard";
 import { computeVisible } from "../filter";
-import { NODE_H, NODE_W } from "../layout/autoLayout";
+import { autoLayout, NODE_H, NODE_W, type Pos } from "../layout/autoLayout";
 import { useGraph } from "../store/useGraph";
 import { filterState, isFilterActive, useUI } from "../store/useUI";
 import { REL_LABELS, hierarchicalRels, type DMNode, type NodeType } from "../types";
@@ -59,7 +59,7 @@ interface Bounds {
  */
 function groupBounds(
   memberIds: string[],
-  nodes: Record<string, DMNode>,
+  positionOf: (id: string) => Pos | null,
   measured: Map<string, { width?: number; height?: number } | undefined>,
 ): Bounds | null {
   let minX = Infinity;
@@ -68,8 +68,11 @@ function groupBounds(
   let maxY = -Infinity;
 
   for (const id of memberIds) {
-    const p = nodes[id]?.placement;
-    if (!p || p.x == null || p.y == null) continue;
+    // Reads the *effective* position, not the saved one: under auto layout
+    // the two differ, and an outline drawn from saved positions would sit
+    // somewhere its members are not.
+    const p = positionOf(id);
+    if (!p) continue;
     const size = measured.get(id);
     const w = size?.width ?? NODE_W;
     const h = size?.height ?? NODE_H;
@@ -106,10 +109,43 @@ function CanvasInner() {
   const link = useGraph((s) => s.link);
   const unlink = useGraph((s) => s.unlink);
   const groupSelection = useGraph((s) => s.groupSelection);
+  const runAutoLayout = useGraph((s) => s.runAutoLayout);
 
   const ui = useUI();
 
   const visible = useVisibleSet();
+
+  /**
+   * Auto layout is a *view*, not a stored arrangement.
+   *
+   * It recomputes from the graph on every change, so it is exactly what you
+   * would get by holding down `l` — which is what "auto" always claimed to be
+   * and never was. Previously it ran once when you switched it on and then
+   * never again, so every node added afterwards kept the crude offset from its
+   * parent that `createChild` guesses, and nodes under different parents piled
+   * up on top of each other. That is the stacking.
+   *
+   * Deriving rather than writing is also what lets hand-placed positions
+   * survive: `placement` is never touched while auto is on, so switching back
+   * to freeform puts everything exactly where its owner left it.
+   */
+  const autoPositions = useMemo(
+    () =>
+      ui.layoutMode === "auto"
+        ? autoLayout(Object.values(nodes), Object.values(edges))
+        : null,
+    [ui.layoutMode, nodes, edges],
+  );
+
+  const positionOf = useCallback(
+    (id: string): Pos | null => {
+      const auto = autoPositions?.get(id);
+      if (auto) return auto;
+      const p = nodes[id]?.placement;
+      return p && p.x != null && p.y != null ? { x: p.x, y: p.y } : null;
+    },
+    [autoPositions, nodes],
+  );
 
   /**
    * React Flow nodes, derived from the store but held in local state.
@@ -133,7 +169,7 @@ function CanvasInner() {
       // free whenever a member moves — including mid-drag.
       const boxes: RFNode[] = [];
       for (const g of Object.values(groups)) {
-        const bounds = groupBounds(g.nodeIds, nodes, measured);
+        const bounds = groupBounds(g.nodeIds, positionOf, measured);
         if (!bounds) continue;
         boxes.push({
           id: g.id,
@@ -156,7 +192,7 @@ function CanvasInner() {
       const cards: RFNode[] = Object.values(nodes).map((n) => ({
         id: n.id,
         type: "ibis",
-        position: { x: n.placement?.x ?? 0, y: n.placement?.y ?? 0 },
+        position: positionOf(n.id) ?? { x: 0, y: 0 },
         selected: n.id === selectedId || multiSelected.has(n.id),
         data: { node: n, dimmed: !visible.has(n.id) } satisfies NodeCardData,
         zIndex: 1,
@@ -165,7 +201,7 @@ function CanvasInner() {
 
       return [...boxes, ...cards];
     });
-  }, [nodes, groups, selectedId, multiSelected, visible]);
+  }, [nodes, groups, selectedId, multiSelected, visible, positionOf]);
 
   const rfEdges = useMemo<RFEdge[]>(
     () =>
@@ -249,8 +285,8 @@ function CanvasInner() {
     if (selectionCount < 2) return null;
     const ids = selectedId ? [selectedId, ...multiSelected] : [];
     const measured = new Map(rfNodes.map((n) => [n.id, n.measured]));
-    return groupBounds(ids, nodes, measured);
-  }, [selectionCount, selectedId, multiSelected, nodes, rfNodes]);
+    return groupBounds(ids, positionOf, measured);
+  }, [selectionCount, selectedId, multiSelected, positionOf, rfNodes]);
 
   return (
     <div className="canvas">
@@ -261,6 +297,19 @@ function CanvasInner() {
         onInit={(inst) => (flowRef.current = inst)}
         onNodesChange={onNodesChange}
         onConnect={onConnect}
+        onNodeDragStart={(_, node) => {
+          if (node.type === "groupBox" || ui.layoutMode !== "auto") return;
+          // Moving a node by hand is a statement that you want to arrange this
+          // map yourself, so auto layout steps aside.
+          //
+          // The current auto positions are saved first — the same write `l`
+          // performs — so the rest of the map stays exactly where it appears
+          // to be. Without that, every other node would snap back to whatever
+          // was saved before auto was switched on, and the map would rearrange
+          // itself under the cursor mid-drag.
+          void runAutoLayout(true);
+          ui.setLayoutMode("freeform");
+        }}
         onNodeDragStop={(_, node) => {
           // Group outlines are dragged by GroupBox itself, so anything React
           // Flow reports here is a node.
@@ -300,7 +349,10 @@ function CanvasInner() {
         selectionOnDrag
         selectionKeyCode="Shift"
         multiSelectionKeyCode="Shift"
-        nodesDraggable={ui.layoutMode === "freeform"}
+        // Draggable in both modes. Auto layout used to lock nodes down, which
+        // meant the only way out of it was finding the toolbar toggle;
+        // dragging is the obvious gesture and now does the right thing.
+        nodesDraggable
         minZoom={0.08}
         maxZoom={2.5}
         proOptions={{ hideAttribution: false }}

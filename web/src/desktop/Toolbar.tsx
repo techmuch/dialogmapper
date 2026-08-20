@@ -147,14 +147,16 @@ export function Toolbar() {
           className={`pill ${ui.layoutMode === "auto" ? "is-on" : ""}`}
           title={
             ui.layoutMode === "auto"
-              ? "Auto layout: positions are managed for you, dragging is off"
-              : "Freeform: drag nodes wherever you like"
+              ? "Auto layout: the map re-tidies itself. Drag any node to take over."
+              : "Freeform: your own arrangement. Press L to tidy up."
           }
-          onClick={() => {
-            const next = ui.layoutMode === "auto" ? "freeform" : "auto";
-            ui.setLayoutMode(next);
-            if (next === "auto") void runAutoLayout(true);
-          }}
+          // No layout write on either direction. Auto is a view computed from
+          // the graph, so turning it off simply reveals the saved positions
+          // again — which is what makes a hand-arranged map survive a trip
+          // through auto layout untouched.
+          onClick={() =>
+            ui.setLayoutMode(ui.layoutMode === "auto" ? "freeform" : "auto")
+          }
         >
           {ui.layoutMode === "auto" ? "Auto layout" : "Freeform"}
         </button>

@@ -46,7 +46,9 @@ export const useUI = create<UIState>((set, get) => ({
   paletteOpen: false,
   mapMenuOpen: false,
   helpOpen: false,
-  layoutMode: (localStorage.getItem("dm:layout") as "freeform" | "auto") ?? "freeform",
+  // Auto by default: a map that tidies itself is the right first experience,
+  // and dragging any node opts out immediately, so nobody is stuck in it.
+  layoutMode: (localStorage.getItem("dm:layout") as "freeform" | "auto") ?? "auto",
   showMinimap: localStorage.getItem("dm:minimap") !== "off",
 
   filterPreset: "all",

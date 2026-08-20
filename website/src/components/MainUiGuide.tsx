@@ -61,18 +61,19 @@ const uiFeatures: UiFeature[] = [
     id: 'layout-mode',
     category: 'toolbar',
     name: 'Layout Mode Toggle (Auto layout / Freeform)',
-    description: 'Switch between deterministic tree auto-layout and manual node dragging.',
-    howToUse: 'Click "Auto layout" to let dialogmapper align nodes automatically into argument trees, or switch to "Freeform" to arrange nodes manually.',
-    whyItMatters: 'Prevents chaotic node overlap during fast capture while allowing manual customization when needed.'
+    badge: 'Default: Auto',
+    description: 'Auto layout keeps the argument tree tidy as you type. Freeform is your own arrangement.',
+    howToUse: 'Auto layout is on by default and re-runs on every change, so the map is always what holding down `l` would give you. Drag any node to take over — you do not need to find this toggle first.',
+    whyItMatters: 'Auto layout is a view, not a stored arrangement: it never writes positions, so a hand-arranged map comes back untouched when you switch it off. Dragging saves the visible positions before handing over, so nothing except the node under your cursor moves.'
   },
   {
     id: 'tidy-button',
     category: 'toolbar',
     name: 'Tidy Button',
     shortcut: 'l',
-    description: 'Instantly re-aligns all nodes into a clean IBIS tree.',
-    howToUse: 'Click "Tidy" or press `l` on your keyboard to trigger auto-layout at any time.',
-    whyItMatters: 'Cleans up scattered nodes in one frame.'
+    description: 'Lays out the tree and saves the result.',
+    howToUse: 'Click "Tidy" or press `l`. In freeform this is the explicit "commit this arrangement" action.',
+    whyItMatters: 'It saves as it goes, so the map ends up indistinguishable from one where every node was dragged into place — and it survives a reload.'
   },
   {
     id: 'insert-button',

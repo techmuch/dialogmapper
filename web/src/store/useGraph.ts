@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { ApiError, CLIENT_ID, api, onMutation } from "../api";
-import { autoLayout } from "../layout/autoLayout";
+import { autoLayout, freeSpot } from "../layout/autoLayout";
 import { NODE_LABELS, REL_LABELS } from "../types";
 import type {
   DMEdge,
@@ -282,8 +282,17 @@ export const useGraph = create<GraphState>((set, get) => ({
     const px = parent?.placement?.x ?? 0;
     const py = parent?.placement?.y ?? 0;
     const siblings = parent ? childrenOf(get(), parent.id).length : 0;
-    const x = px + 40 + siblings * 24;
-    const y = py + 150 + siblings * 12;
+    // Then nudged clear of anything already there. The offset alone knows
+    // nothing about other branches, so two of them growing at once used to put
+    // cards exactly on top of each other.
+    const { x, y } = freeSpot(
+      px + 40 + siblings * 24,
+      py + 150 + siblings * 12,
+      Object.values(nodes)
+        .map((n) => n.placement)
+        .filter((p): p is NonNullable<typeof p> => p?.x != null && p?.y != null)
+        .map((p) => ({ x: p.x!, y: p.y! })),
+    );
 
     try {
       const { node, edge } = await api.createNode({
@@ -439,7 +448,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   insertExisting: async (nodeId) => {
     const { mapId, nodes } = get();
     if (!mapId) return;
-    const spot = freeSpot(Object.values(nodes));
+    const spot = spaceToTheRight(Object.values(nodes));
     try {
       const node = await api.transclude(mapId, nodeId, spot.x, spot.y);
       set((s) => ({ nodes: { ...s.nodes, [node.id]: node }, selectedId: node.id }));
@@ -782,7 +791,7 @@ function childrenOf(s: GraphState, nodeId: string) {
 }
 
 /** Finds empty canvas space to the right of everything already placed. */
-function freeSpot(nodes: DMNode[]) {
+function spaceToTheRight(nodes: DMNode[]) {
   let maxX = 0;
   let sumY = 0;
   let n = 0;

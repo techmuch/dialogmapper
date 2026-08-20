@@ -144,6 +144,39 @@ function maxDepth(positions: Map<string, Pos>): number {
   return Math.round(max / (NODE_H + V_GAP));
 }
 
+/** Whether two node-sized boxes at these corners overlap. */
+function overlaps(a: Pos, b: Pos): boolean {
+  return (
+    Math.abs(a.x - b.x) < NODE_W + H_GAP / 2 && Math.abs(a.y - b.y) < NODE_H + V_GAP / 4
+  );
+}
+
+/**
+ * A spot near (x, y) that does not sit on top of an existing node.
+ *
+ * New nodes are positioned by guessing an offset from their parent, which says
+ * nothing about where anybody else's children already are — so two branches
+ * growing at once put cards directly on top of each other. Auto layout hides
+ * that by recomputing everything, but the guessed position is still what gets
+ * saved, and it is what you see the moment you switch to freeform.
+ *
+ * Steps down first, because an argument tree grows downwards and a free row
+ * below the parent is nearly always the right place.
+ */
+export function freeSpot(x: number, y: number, taken: Pos[]): Pos {
+  const step = NODE_H + V_GAP / 2;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const candidate = {
+      x: x + (attempt % 2 === 1 ? NODE_W + H_GAP : 0),
+      y: y + Math.floor(attempt / 2) * step,
+    };
+    if (!taken.some((t) => overlaps(candidate, t))) return candidate;
+  }
+  // Give up rather than loop: a crowded map is better than a hung tab, and
+  // `l` will sort it out.
+  return { x, y };
+}
+
 /**
  * Positions for nodes the backend never placed. Used on first paint so blind
  * additions do not stack at the origin, without disturbing nodes a human has
