@@ -115,6 +115,7 @@ function CanvasInner() {
   const unlink = useGraph((s) => s.unlink);
   const groupSelection = useGraph((s) => s.groupSelection);
   const runAutoLayout = useGraph((s) => s.runAutoLayout);
+  const grammar = useGraph((s) => s.grammar);
 
   const ui = useUI();
 
@@ -137,9 +138,9 @@ function CanvasInner() {
   const autoPositions = useMemo(
     () =>
       ui.layoutMode === "auto"
-        ? autoLayout(Object.values(nodes), Object.values(edges))
+        ? autoLayout(Object.values(nodes), Object.values(edges), hierarchicalRels(grammar))
         : null,
-    [ui.layoutMode, nodes, edges],
+    [ui.layoutMode, nodes, edges, grammar],
   );
 
   const positionOf = useCallback(

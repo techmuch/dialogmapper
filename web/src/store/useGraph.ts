@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { ApiError, CLIENT_ID, api, onMutation } from "../api";
 import { autoLayout, freeSpot } from "../layout/autoLayout";
-import { NODE_LABELS, REL_LABELS } from "../types";
+import { NODE_LABELS, REL_LABELS, hierarchicalRels } from "../types";
 import type {
   DMEdge,
   DMGroup,
@@ -564,7 +564,11 @@ export const useGraph = create<GraphState>((set, get) => ({
   runAutoLayout: async (persist = true) => {
     const { nodes, edges, mapId } = get();
     if (!mapId) return;
-    const placed = autoLayout(Object.values(nodes), Object.values(edges));
+    const placed = autoLayout(
+      Object.values(nodes),
+      Object.values(edges),
+      hierarchicalRels(get().grammar),
+    );
 
     set((s) => {
       const next = { ...s.nodes };

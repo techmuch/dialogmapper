@@ -152,6 +152,14 @@ redo against a world that has moved on is how undo systems corrupt state.
 
 ## Layout
 
+Every node sits under whatever it hangs off, Notes included. `relates_to` is
+not a *hierarchical* relationship — cross-links are its purpose, and treating
+it as hierarchy would trip cycle detection — but that is a statement about
+cycle checking, not about where a card belongs. An earlier version built the
+tree from hierarchical edges alone, which left Notes parentless and lined them
+up along the top beside the root questions. A Note now sits beneath the thing
+it annotates, at whatever depth that is.
+
 Auto layout is on by default and is a *view*, not a stored arrangement. It
 recomputes the tidy tree from the graph on every change, so the map is always
 what you would get by holding down `l`.

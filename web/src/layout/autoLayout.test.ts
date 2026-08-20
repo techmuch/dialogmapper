@@ -111,6 +111,47 @@ describe("autoLayout", () => {
     expect(collisions(pos)).toEqual([]);
   });
 
+  /**
+   * Notes used to be excluded from the tree because `relates_to` is not a
+   * hierarchical relationship — a distinction that matters for cycle checking
+   * and says nothing about where a card should sit. Having no parent made them
+   * roots, so they lined up along the top beside the root questions instead of
+   * under whatever they annotate.
+   */
+  it("hangs a note under what it relates to", () => {
+    const pos = autoLayout(
+      [node("q", "question"), node("i"), node("n", "note")],
+      [edge("i", "q"), edge("n", "i", "relates_to")],
+    );
+    expect(pos.get("n")!.y).toBeGreaterThan(pos.get("i")!.y);
+  });
+
+  it("nests a note as deeply as the thing it annotates", () => {
+    // A note on a Pro belongs beneath that Pro, not level with the question.
+    const pos = autoLayout(
+      [node("q", "question"), node("i"), node("p", "pro"), node("n", "note")],
+      [edge("i", "q"), edge("p", "i", "supports"), edge("n", "p", "relates_to")],
+    );
+    expect(pos.get("n")!.y).toBeGreaterThan(pos.get("p")!.y);
+    expect(pos.get("n")!.y).toBeGreaterThan(pos.get("i")!.y);
+  });
+
+  it("treats the note as the child whichever way the link was drawn", () => {
+    // The grammar allows "Note relates to X" and "X relates to a Note". Only
+    // one of those readings puts the note in a sensible place.
+    const pos = autoLayout(
+      [node("q", "question"), node("i"), node("n", "note")],
+      [edge("i", "q"), edge("i", "n", "relates_to")],
+    );
+    expect(pos.get("n")!.y).toBeGreaterThan(pos.get("i")!.y);
+  });
+
+  it("still leaves a note attached to nothing as its own root", () => {
+    const pos = autoLayout([node("q", "question"), node("loose", "note")], []);
+    expect(pos.get("loose")!.y).toBe(pos.get("q")!.y);
+    expect(collisions(pos)).toEqual([]);
+  });
+
   it("places every node exactly once", () => {
     const nodes = ["a", "b", "c", "d"].map((id) => node(id));
     const pos = autoLayout(nodes, [edge("b", "a"), edge("c", "a"), edge("d", "b")]);

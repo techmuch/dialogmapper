@@ -195,7 +195,12 @@ test("no offered type change produces an error", async ({ page, dm }) => {
   // errored. Anything still offered must now succeed. The unavailable ones are
   // allowed to complain — that is their job — so they are skipped here and
   // covered above.
-  for (const label of ["Con", "Note", "Idea"]) {
+  //
+  // Note goes last deliberately. As a Note the card hangs off the Idea by
+  // `relates_to`, which the layout now nests like any other link, and on this
+  // small map that puts it under the minimap — which swallows the click needed
+  // to re-select it. Re-ordering avoids depending on that overlap.
+  for (const label of ["Con", "Idea", "Note"]) {
     await openSidebarFor(page, "Cuts p99 to 200ms");
     const chip = typeChip(page, label);
     if ((await chip.getAttribute("data-unavailable")) === "true") continue;

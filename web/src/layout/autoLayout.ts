@@ -1,3 +1,4 @@
+import { parentLinks } from "../graph";
 import type { DMEdge, DMNode, Relationship } from "../types";
 
 /**
@@ -19,14 +20,6 @@ const H_GAP = 28;
 const V_GAP = 116;
 const ROOT_GAP = 96;
 
-const HIERARCHICAL: ReadonlySet<Relationship> = new Set<Relationship>([
-  "responds_to",
-  "questions",
-  "supports",
-  "objects_to",
-  "specializes",
-]);
-
 export interface Pos {
   x: number;
   y: number;
@@ -36,23 +29,35 @@ export interface Pos {
  * Returns positions for every node. Order within a level follows the argument
  * reading order (questions, then ideas, then pros, then cons, then notes), so
  * a map laid out twice looks the same both times.
+ *
+ * The tree comes from `parentLinks`, which is the same reading of "what hangs
+ * off what" that the phone's threading and the canvas filter use — so the three
+ * surfaces cannot disagree about the shape of a map.
+ *
+ * That matters most for Notes. This used to build its tree from hierarchical
+ * edges alone, and `relates_to` is deliberately not hierarchical: cross-links
+ * are its purpose and treating it as hierarchy would trip cycle detection. But
+ * that is a statement about cycle checking, not about where a card belongs, and
+ * excluding it left every Note parentless — so they became roots and lined up
+ * along the top beside the root questions instead of under what they annotate.
  */
-export function autoLayout(nodes: DMNode[], edges: DMEdge[]): Map<string, Pos> {
+export function autoLayout(
+  nodes: DMNode[],
+  edges: DMEdge[],
+  hierarchical?: Relationship[],
+): Map<string, Pos> {
   const out = new Map<string, Pos>();
   if (nodes.length === 0) return out;
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const parents = parentLinks(nodeById, edges, hierarchical);
   const children = new Map<string, string[]>();
-  const hasParent = new Set<string>();
-
-  for (const e of edges) {
-    if (!HIERARCHICAL.has(e.relationshipType)) continue;
-    if (!nodeById.has(e.sourceNodeId) || !nodeById.has(e.targetNodeId)) continue;
-    // The child is the source: "Pro --supports--> Idea".
-    const list = children.get(e.targetNodeId);
-    if (list) list.push(e.sourceNodeId);
-    else children.set(e.targetNodeId, [e.sourceNodeId]);
-    hasParent.add(e.sourceNodeId);
+  for (const n of nodes) {
+    const link = parents.get(n.id);
+    if (!link) continue;
+    const list = children.get(link.parentId);
+    if (list) list.push(n.id);
+    else children.set(link.parentId, [n.id]);
   }
 
   const rank: Record<string, number> = {
@@ -71,7 +76,7 @@ export function autoLayout(nodes: DMNode[], edges: DMEdge[]): Map<string, Pos> {
       return d !== 0 ? d : na.createdAt.localeCompare(nb.createdAt);
     });
 
-  const roots = sortIds(nodes.filter((n) => !hasParent.has(n.id)).map((n) => n.id));
+  const roots = sortIds(nodes.filter((n) => !parents.has(n.id)).map((n) => n.id));
 
   // First pass: how wide is each subtree? Guarded against cycles, which the
   // backend prevents but a corrupt database could still contain.

@@ -33,12 +33,32 @@ export function parentLinks(
   const fallback = new Map<string, ParentLink>();
 
   for (const e of edges) {
-    if (!nodes.has(e.sourceNodeId) || !nodes.has(e.targetNodeId)) continue;
+    const source = nodes.get(e.sourceNodeId);
+    const target = nodes.get(e.targetNodeId);
+    if (!source || !target) continue;
     if (e.sourceNodeId === e.targetNodeId) continue;
-    const into = hierarchical.includes(e.relationshipType) ? preferred : fallback;
-    // First edge wins, so the result is stable rather than order-of-arrival.
-    if (!into.has(e.sourceNodeId)) {
-      into.set(e.sourceNodeId, { parentId: e.targetNodeId, rel: e.relationshipType });
+
+    if (hierarchical.includes(e.relationshipType)) {
+      // First edge wins, so the result is stable rather than order-of-arrival.
+      if (!preferred.has(e.sourceNodeId)) {
+        preferred.set(e.sourceNodeId, {
+          parentId: e.targetNodeId,
+          rel: e.relationshipType,
+        });
+      }
+      continue;
+    }
+
+    // An associative link has no inherent direction of hierarchy, and the
+    // grammar allows both "Note relates to X" and "X relates to a Note". Only
+    // one of those readings is useful: a Note annotates something, so it hangs
+    // off it. Without this, drawing the link the other way round would make an
+    // Idea a child of a Note.
+    const noteIsTarget = target.type === "note" && source.type !== "note";
+    const childId = noteIsTarget ? e.targetNodeId : e.sourceNodeId;
+    const parentId = noteIsTarget ? e.sourceNodeId : e.targetNodeId;
+    if (!fallback.has(childId)) {
+      fallback.set(childId, { parentId, rel: e.relationshipType });
     }
   }
 
