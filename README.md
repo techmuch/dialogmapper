@@ -15,6 +15,20 @@ dialogmapper init
 dialogmapper start --open
 ```
 
+### Download Pre-built Binaries
+
+No Go or Node install required on target machines. Download the standalone executable for your platform:
+
+| Platform | Architecture | Download Link |
+|----------|--------------|---------------|
+| **macOS** | Apple Silicon (`arm64`) | [dialogmapper-darwin-arm64](https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-darwin-arm64) |
+| **macOS** | Intel (`amd64`) | [dialogmapper-darwin-amd64](https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-darwin-amd64) |
+| **Linux** | x86_64 (`amd64`) | [dialogmapper-linux-amd64](https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-linux-amd64) |
+| **Linux** | ARM64 (`arm64`) | [dialogmapper-linux-arm64](https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-linux-arm64) |
+| **Windows** | x64 (`amd64`) | [dialogmapper-windows-amd64.exe](https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-windows-amd64.exe) |
+
+View all versioned releases on [GitHub Releases](https://github.com/techmuch/dialogmapper/releases).
+
 ## Why the constraints are the point
 
 An untyped arrow between two boxes means nothing. "This Pro supports that Idea"

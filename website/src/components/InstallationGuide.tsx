@@ -86,44 +86,97 @@ export const InstallationGuide: React.FC = () => {
           <div className="card" style={{ maxWidth: '850px', margin: '0 auto', background: 'var(--bg-card)' }}>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Download style={{ color: 'var(--accent-cyan)' }} />
-              <span>Download Standalone Binary (v0.1.5)</span>
+              <span>Download Standalone Binary (v0.1.6)</span>
             </h3>
             <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-              No Go or Node install required on target machines. Download the binary for your operating system:
+              No Go or Node install required on target machines. Direct download links for your operating system:
             </p>
 
-            <div className="grid-3">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+              {/* macOS Apple Silicon */}
               <a
-                href="https://github.com/techmuch/dialogmapper/releases/latest"
+                href="https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-darwin-arm64"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="card"
-                style={{ background: '#0a0e1a', textDecoration: 'none', textAlign: 'center', padding: '1.25rem' }}
+                style={{ background: '#0a0e1a', textDecoration: 'none', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
               >
-                <div style={{ fontWeight: 700, color: '#fff', marginBottom: '0.25rem' }}>macOS (Apple Silicon & Intel)</div>
-                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>darwin/arm64, darwin/amd64</span>
+                <div style={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Download style={{ width: '1rem', height: '1rem', color: 'var(--accent-cyan)' }} />
+                  <span>macOS (Apple Silicon)</span>
+                </div>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>darwin/arm64 binary</span>
               </a>
 
+              {/* macOS Intel */}
               <a
-                href="https://github.com/techmuch/dialogmapper/releases/latest"
+                href="https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-darwin-amd64"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="card"
-                style={{ background: '#0a0e1a', textDecoration: 'none', textAlign: 'center', padding: '1.25rem' }}
+                style={{ background: '#0a0e1a', textDecoration: 'none', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
               >
-                <div style={{ fontWeight: 700, color: '#fff', marginBottom: '0.25rem' }}>Linux</div>
-                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>linux/amd64, linux/arm64</span>
+                <div style={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Download style={{ width: '1rem', height: '1rem', color: 'var(--accent-cyan)' }} />
+                  <span>macOS (Intel)</span>
+                </div>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>darwin/amd64 binary</span>
               </a>
 
+              {/* Linux x86_64 */}
               <a
-                href="https://github.com/techmuch/dialogmapper/releases/latest"
+                href="https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-linux-amd64"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="card"
-                style={{ background: '#0a0e1a', textDecoration: 'none', textAlign: 'center', padding: '1.25rem' }}
+                style={{ background: '#0a0e1a', textDecoration: 'none', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
               >
-                <div style={{ fontWeight: 700, color: '#fff', marginBottom: '0.25rem' }}>Windows</div>
+                <div style={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Download style={{ width: '1rem', height: '1rem', color: 'var(--accent-cyan)' }} />
+                  <span>Linux (x86_64)</span>
+                </div>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>linux/amd64 binary</span>
+              </a>
+
+              {/* Linux ARM64 */}
+              <a
+                href="https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-linux-arm64"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="card"
+                style={{ background: '#0a0e1a', textDecoration: 'none', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+              >
+                <div style={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Download style={{ width: '1rem', height: '1rem', color: 'var(--accent-cyan)' }} />
+                  <span>Linux (ARM64)</span>
+                </div>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>linux/arm64 binary</span>
+              </a>
+
+              {/* Windows x64 */}
+              <a
+                href="https://github.com/techmuch/dialogmapper/releases/latest/download/dialogmapper-windows-amd64.exe"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="card"
+                style={{ background: '#0a0e1a', textDecoration: 'none', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+              >
+                <div style={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Download style={{ width: '1rem', height: '1rem', color: 'var(--accent-cyan)' }} />
+                  <span>Windows (x64)</span>
+                </div>
                 <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>windows/amd64.exe</span>
+              </a>
+            </div>
+
+            <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+              <a
+                href="https://github.com/techmuch/dialogmapper/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--accent-cyan)', fontSize: '0.875rem', textDecoration: 'underline' }}
+              >
+                View all releases & assets on GitHub →
               </a>
             </div>
           </div>

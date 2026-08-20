@@ -30,3 +30,6 @@ jobs:
 
       - name: Build Single Binary
         run: make build
+
+      - name: Verify Cross-Compilation (macOS, Linux, Windows)
+        run: make release
