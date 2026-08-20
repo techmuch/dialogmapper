@@ -7,7 +7,6 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
-  useReactFlow,
   useStore,
   ViewportPortal,
   type Connection,
@@ -91,7 +90,6 @@ function groupBounds(
 
 function CanvasInner() {
   const flowRef = useRef<ReactFlowInstance | null>(null);
-  const rf = useReactFlow();
   // Reactive zoom, so outlines stay a constant on-screen weight while zooming
   // rather than only being right at first render.
   const zoom = useStore((s) => s.transform[2]);
@@ -107,7 +105,6 @@ function CanvasInner() {
   const moveNode = useGraph((s) => s.moveNode);
   const link = useGraph((s) => s.link);
   const unlink = useGraph((s) => s.unlink);
-  const createRoot = useGraph((s) => s.createRoot);
   const groupSelection = useGraph((s) => s.groupSelection);
 
   const ui = useUI();
@@ -279,14 +276,23 @@ function CanvasInner() {
         }}
         onNodeDoubleClick={(_, node) => {
           if (node.type === "groupBox") return;
-          useGraph.getState().beginEdit(node.id);
+          // Opens the details panel on this node. It used to start an inline
+          // rename, which `F2` still does — but double-click is the gesture
+          // people try when they want to see more, not type over what is
+          // already there.
+          ui.toggleSidebar();
         }}
         onEdgeDoubleClick={(_, edge) => void unlink(edge.id)}
         onPaneClick={() => select(null)}
-        onDoubleClick={(ev) => {
-          const p = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
-          void createRoot("question", p.x - NODE_W / 2, p.y - NODE_H / 2);
-        }}
+        // There was an onDoubleClick here that created a root Question at the
+        // pointer. It never once did that: React Flow binds d3-zoom's
+        // `dblclick.zoom` to the pane, which stops propagation, so the handler
+        // was unreachable from empty canvas. It only ever fired when the
+        // double-click landed on a card or an edge — where d3-zoom is not
+        // listening — and there it dropped a stray Question behind whatever had
+        // been clicked. The single observable behaviour of the feature was its
+        // own bug. Double-clicking the canvas zooms, which is React Flow's
+        // default and what was really happening all along.
         // Plain drag pans, because the canvas should feel like a map. Shift
         // drags a selection box and shift-click extends the selection, which
         // is the convention every other canvas tool uses.

@@ -91,7 +91,7 @@ const SHORTCUTS: [string, string][] = [
   ["Space", "Centre on the selection, or fit the whole map"],
   ["f", "Fit the whole map"],
   ["l", "Tidy up with auto-layout"],
-  ["Tab", "Toggle the details panel"],
+  ["Tab", "Toggle the details panel — or double-click a node"],
   ["/", "Search every map and insert an existing node"],
   ["Backspace", "Remove from this map (shared nodes survive elsewhere)"],
   ["?", "This list"],
