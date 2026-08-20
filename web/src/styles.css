@@ -124,6 +124,23 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .status-toggle--rejected.is-on { border-color: var(--con);      color: var(--con); }
 .status-toggle--parked.is-on   { border-color: var(--note);     color: var(--note); }
 
+/* Zoom level picker, beside React Flow's own controls in the bottom-left.
+   The margin clears that column of buttons. */
+.zoompick {
+  margin-left: 44px !important;
+  margin-bottom: 15px !important;
+}
+.zoompick label { display: flex; align-items: center; gap: 5px; }
+.zoompick__label { font-size: 10px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: .05em; }
+.zoompick select {
+  background: var(--bg-3);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 5px;
+  font-size: 11px;
+}
+
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .status-dot.is-up { background: var(--pro); }
 .status-dot.is-down { background: var(--con); animation: pulse 1.4s infinite; }

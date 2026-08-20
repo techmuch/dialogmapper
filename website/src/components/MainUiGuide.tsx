@@ -76,6 +76,15 @@ const uiFeatures: UiFeature[] = [
     whyItMatters: 'It saves as it goes, so the map ends up indistinguishable from one where every node was dragged into place — and it survives a reload.'
   },
   {
+    id: 'zoom-picker',
+    category: 'toolbar',
+    name: 'Zoom Level Picker (bottom-left)',
+    badge: 'Default: Auto',
+    description: 'Pins how big everything looks, or leaves it to the tool.',
+    howToUse: 'Auto lets tidying frame the whole map, which is the long-standing behaviour. Pick a percentage and that level survives `l`, `f`, Space and auto layout — they reposition the viewport without changing the zoom. Zooming by hand updates the picker to the nearest preset.',
+    whyItMatters: 'At a fixed zoom the tool cannot frame everything, so those commands centre on your selection instead, or on the middle of the map when nothing is selected.'
+  },
+  {
     id: 'insert-button',
     category: 'toolbar',
     name: 'Insert Node Palette Button',

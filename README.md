@@ -170,6 +170,25 @@ saved before auto was switched on, mid-drag.
 `l` is the explicit "commit this arrangement": it lays out and saves, leaving
 the map indistinguishable from one where each node was dragged into place.
 
+**A node you are about to type into is always on screen.** New nodes are placed
+relative to whatever was selected, so during a fast capture run they regularly
+landed past the edge — you got a cursor in a title field you could not see. The
+canvas now shifts the minimum needed to show the whole card, and only when it
+is actually clipped. Zoom is never touched.
+
+## Zoom
+
+The picker in the bottom-left corner defaults to **Auto**, where tidying
+chooses the zoom that frames the map — the long-standing behaviour.
+
+Pin a level and it survives `l`, `f`, Space and auto layout: those reposition
+the viewport without changing how big anything looks. With a level pinned they
+centre on the selection, or on the middle of the map when nothing is selected,
+since framing everything is no longer possible at a fixed zoom.
+
+Zooming by hand updates the picker to the nearest preset rather than being
+overruled by it, so the control always names the zoom you are looking at.
+
 ## Filtering
 
 Two presets, not four.

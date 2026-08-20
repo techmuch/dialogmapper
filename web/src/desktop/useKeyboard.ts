@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import type { ReactFlowInstance } from "@xyflow/react";
 import { useGraph } from "../store/useGraph";
 import { useUI } from "../store/useUI";
+import { NODE_H, NODE_W } from "../layout/autoLayout";
+import { boundsCenter } from "./viewport";
 import type { DMNode, NodeType, Relationship } from "../types";
 
 /**
@@ -181,8 +183,7 @@ export function useKeyboard({ flow, visibleNodes }: Options) {
           ev.preventDefault();
           // Space means "show me where I am": centre on the selection, or fit
           // the whole map when nothing is selected.
-          if (selected) panTo(flow, selected, 1.1);
-          else void flow?.fitView({ padding: 0.2, duration: 300 });
+          frame(flow, selected);
           return;
         }
 
@@ -227,7 +228,7 @@ export function useKeyboard({ flow, visibleNodes }: Options) {
         case "f":
         case "F": {
           ev.preventDefault();
-          void flow?.fitView({ padding: 0.2, duration: 300 });
+          frame(flow, null);
           return;
         }
 
@@ -235,7 +236,7 @@ export function useKeyboard({ flow, visibleNodes }: Options) {
         case "L": {
           ev.preventDefault();
           void g.runAutoLayout(true).then(() => {
-            setTimeout(() => flow?.fitView({ padding: 0.2, duration: 300 }), 60);
+            setTimeout(() => frame(flow, selected), 60);
           });
           return;
         }
@@ -319,6 +320,45 @@ function argumentAnchor(
   return answers[0] ?? null;
 }
 
+/**
+ * "Show me the map" at whatever zoom the user has asked for.
+ *
+ * With zoom on auto this is React Flow's fitView, exactly as before. With a
+ * level pinned, fitView cannot be used at all — its whole job is choosing a
+ * zoom — so the viewport is centred instead: on the selection when there is
+ * one, otherwise on the middle of everything.
+ */
+function frame(flow: ReactFlowInstance | null, selected: DMNode | null) {
+  if (!flow) return;
+  const zoom = useUI.getState().zoomSetting;
+
+  if (zoom === "auto") {
+    if (selected) panTo(flow, selected, 1.1);
+    else void flow.fitView({ padding: 0.2, duration: 300 });
+    return;
+  }
+
+  if (selected) {
+    panTo(flow, selected, zoom);
+    return;
+  }
+  const centre = boundsCenter(
+    flow.getNodes().flatMap((n) =>
+      n.type === "groupBox"
+        ? []
+        : [
+            {
+              x: n.position.x,
+              y: n.position.y,
+              width: n.measured?.width ?? NODE_W,
+              height: n.measured?.height ?? NODE_H,
+            },
+          ],
+    ),
+  );
+  if (centre) void flow.setCenter(centre.x, centre.y, { duration: 300, zoom });
+}
+
 function centerOfViewport(flow: ReactFlowInstance | null) {
   if (!flow) return { x: 0, y: 0 };
   const { x, y, zoom } = flow.getViewport();
@@ -329,8 +369,16 @@ function centerOfViewport(flow: ReactFlowInstance | null) {
 }
 
 function panTo(flow: ReactFlowInstance | null, node: DMNode, zoom?: number) {
-  if (!flow || node.placement?.x == null) return;
-  void flow.setCenter(node.placement.x + 118, (node.placement.y ?? 0) + 44, {
+  if (!flow) return;
+  // React Flow's copy, not the saved placement. Under auto layout the two
+  // differ — positions are computed and never written — so reading `placement`
+  // panned to wherever the node used to be, or to the crude offset it was
+  // created with. Falls back to the saved value for a node not yet rendered.
+  const rendered = flow.getNode(node.id)?.position;
+  const x = rendered?.x ?? node.placement?.x;
+  const y = rendered?.y ?? node.placement?.y;
+  if (x == null || y == null) return;
+  void flow.setCenter(x + NODE_W / 2, y + NODE_H / 2, {
     duration: 220,
     zoom: zoom ?? flow.getZoom(),
   });

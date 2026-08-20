@@ -5,6 +5,7 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   useStore,
@@ -25,6 +26,7 @@ import { autoLayout, NODE_H, NODE_W, type Pos } from "../layout/autoLayout";
 import { useGraph } from "../store/useGraph";
 import { filterState, isFilterActive, useUI } from "../store/useUI";
 import { REL_LABELS, hierarchicalRels, type DMNode, type NodeType } from "../types";
+import { ZOOM_PRESETS, panDelta, snapZoom } from "./viewport";
 
 const nodeTypes = { ibis: NodeCard, groupBox: GroupBox };
 
@@ -93,6 +95,9 @@ function groupBounds(
 
 function CanvasInner() {
   const flowRef = useRef<ReactFlowInstance | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  /** False until the opening fitView has finished; see onMoveEnd. */
+  const settled = useRef(false);
   // Reactive zoom, so outlines stay a constant on-screen weight while zooming
   // rather than only being right at first render.
   const zoom = useStore((s) => s.transform[2]);
@@ -203,6 +208,61 @@ function CanvasInner() {
     });
   }, [nodes, groups, selectedId, multiSelected, visible, positionOf]);
 
+  /**
+   * Keep the node being edited fully on screen.
+   *
+   * A new node is created relative to whatever was selected, so during a fast
+   * capture run it regularly lands past the edge of the viewport — you get a
+   * cursor in a title field you cannot see, and the first thing you know about
+   * it is that your typing went somewhere invisible.
+   *
+   * The pan is the smallest one that works and only happens when the node is
+   * actually clipped, because moving the map when nothing was wrong is its own
+   * kind of disorienting. Zoom is never touched: that belongs to the user and,
+   * if they have pinned it, to the zoom control.
+   */
+  const editingId = useGraph((s) => s.editingId);
+  useEffect(() => {
+    const flow = flowRef.current;
+    if (!editingId || !flow) return;
+
+    let cancelled = false;
+    // React Flow hides a node until it has measured it, so its size is not
+    // known for the first few frames after creation — the same window that
+    // makes focusing a new title field need a retry.
+    const deadline = performance.now() + 1000;
+    const attempt = () => {
+      if (cancelled) return;
+      const el = wrapRef.current;
+      const n = flow.getNode(editingId);
+      if (!el || !n?.measured?.width) {
+        if (performance.now() < deadline) requestAnimationFrame(attempt);
+        return;
+      }
+      const { x: vx, y: vy, zoom } = flow.getViewport();
+      const box = el.getBoundingClientRect();
+      const delta = panDelta(
+        {
+          x: n.position.x * zoom + vx,
+          y: n.position.y * zoom + vy,
+          width: (n.measured.width ?? NODE_W) * zoom,
+          height: (n.measured.height ?? NODE_H) * zoom,
+        },
+        { x: 0, y: 0, width: box.width, height: box.height },
+      );
+      if (delta) {
+        void flow.setViewport(
+          { x: vx + delta.dx, y: vy + delta.dy, zoom },
+          { duration: 200 },
+        );
+      }
+    };
+    requestAnimationFrame(attempt);
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId]);
+
   const rfEdges = useMemo<RFEdge[]>(
     () =>
       Object.values(edges).map((e) => {
@@ -289,12 +349,18 @@ function CanvasInner() {
   }, [selectionCount, selectedId, multiSelected, positionOf, rfNodes]);
 
   return (
-    <div className="canvas">
+    <div className="canvas" ref={wrapRef}>
       <ReactFlow
         nodes={rfNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
-        onInit={(inst) => (flowRef.current = inst)}
+        onInit={(inst) => {
+          flowRef.current = inst;
+          // fitView runs on first paint and picks its own zoom, so a pinned
+          // level has to be reapplied afterwards or it would only take effect
+          // the next time something asked for it.
+          setTimeout(() => (settled.current = true), 500);
+        }}
         onNodesChange={onNodesChange}
         onConnect={onConnect}
         onNodeDragStart={(_, node) => {
@@ -357,7 +423,30 @@ function CanvasInner() {
         maxZoom={2.5}
         proOptions={{ hideAttribution: false }}
         fitView
-        fitViewOptions={{ padding: 0.25 }}
+        // Clamping fitView's own min and max to the pinned level is what makes
+        // the opening frame honour it. Applying the zoom afterwards instead
+        // loses a race: fitView runs after onInit and would overwrite it.
+        fitViewOptions={
+          ui.zoomSetting === "auto"
+            ? { padding: 0.25 }
+            : { padding: 0.25, minZoom: ui.zoomSetting, maxZoom: ui.zoomSetting }
+        }
+        // The pinned level follows zooming rather than fighting it, so the
+        // control always names the zoom you are actually looking at.
+        //
+        // Ignored until the first paint has settled: fitView runs on mount and
+        // picks its own zoom, which would otherwise overwrite the pinned level
+        // before the user had done anything — their setting would silently
+        // reset on every page load. After that, moves that keep the pinned
+        // zoom write nothing, so the only thing that reaches here is somebody
+        // actually changing the zoom.
+        onMoveEnd={() => {
+          const flow = flowRef.current;
+          const pinned = useUI.getState().zoomSetting;
+          if (!settled.current || !flow || pinned === "auto") return;
+          const snapped = snapZoom(flow.getZoom());
+          if (snapped !== pinned) useUI.getState().setZoomSetting(snapped);
+        }}
         deleteKeyCode={null}
         // React Flow makes node wrappers focusable and focuses the newly
         // selected one for its own keyboard accessibility. That fires after
@@ -371,6 +460,30 @@ function CanvasInner() {
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} />
         <Controls position="bottom-left" showInteractive={false} />
+        <Panel position="bottom-left" className="zoompick">
+          <label>
+            <span className="zoompick__label">Zoom</span>
+            <select
+              value={ui.zoomSetting === "auto" ? "auto" : String(ui.zoomSetting)}
+              onChange={(e) => {
+                const next =
+                  e.target.value === "auto" ? "auto" : Number(e.target.value);
+                ui.setZoomSetting(next);
+                // Apply it now rather than waiting for the next tidy. Picking
+                // a zoom and watching nothing happen reads as a broken control.
+                if (next !== "auto") void flowRef.current?.zoomTo(next, { duration: 200 });
+              }}
+              title="Auto lets tidying pick the zoom. A fixed level survives L, F and auto layout."
+            >
+              <option value="auto">Auto</option>
+              {ZOOM_PRESETS.map((z) => (
+                <option key={z} value={z}>
+                  {Math.round(z * 100)}%
+                </option>
+              ))}
+            </select>
+          </label>
+        </Panel>
         {ui.showMinimap && (
           <MiniMap
             position="bottom-right"

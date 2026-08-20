@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { isFilterActive as filterActive, type FilterPreset, type FilterState } from "../filter";
+import type { ZoomSetting } from "../desktop/viewport";
 import type { Status } from "../types";
 
 /**
@@ -19,6 +20,12 @@ interface UIState {
   /** Freeform lets the user cluster by hand; auto re-runs the tidy tree. */
   layoutMode: "freeform" | "auto";
   showMinimap: boolean;
+  /**
+   * "auto" lets fitView choose the zoom, which is what tidying has always
+   * done. A number pins it: `l`, `f` and Space then reposition without
+   * changing how big anything looks.
+   */
+  zoomSetting: ZoomSetting;
 
   filterPreset: FilterPreset;
   statusFilter: Set<Status>;
@@ -32,6 +39,7 @@ interface UIState {
   setHelp: (v: boolean) => void;
   setLayoutMode: (m: "freeform" | "auto") => void;
   toggleMinimap: () => void;
+  setZoomSetting: (z: ZoomSetting) => void;
   setFilterPreset: (p: FilterPreset) => void;
   toggleStatus: (s: Status) => void;
   setTagFilter: (t: string | null) => void;
@@ -40,6 +48,14 @@ interface UIState {
 }
 
 export const ALL_STATUSES: Status[] = ["open", "resolved", "rejected", "parked"];
+
+/** Auto unless a level was pinned; an unparseable value falls back to auto. */
+function readZoom(): ZoomSetting {
+  const raw = localStorage.getItem("dm:zoom");
+  if (!raw || raw === "auto") return "auto";
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : "auto";
+}
 
 export const useUI = create<UIState>((set, get) => ({
   sidebarOpen: false,
@@ -50,6 +66,7 @@ export const useUI = create<UIState>((set, get) => ({
   // and dragging any node opts out immediately, so nobody is stuck in it.
   layoutMode: (localStorage.getItem("dm:layout") as "freeform" | "auto") ?? "auto",
   showMinimap: localStorage.getItem("dm:minimap") !== "off",
+  zoomSetting: readZoom(),
 
   filterPreset: "all",
   statusFilter: new Set(ALL_STATUSES),
@@ -70,6 +87,11 @@ export const useUI = create<UIState>((set, get) => ({
     const next = !get().showMinimap;
     localStorage.setItem("dm:minimap", next ? "on" : "off");
     set({ showMinimap: next });
+  },
+
+  setZoomSetting: (z) => {
+    localStorage.setItem("dm:zoom", z === "auto" ? "auto" : String(z));
+    set({ zoomSetting: z });
   },
 
   /**
