@@ -21,10 +21,11 @@ import "@xyflow/react/dist/style.css";
 import GroupBox from "./GroupBox";
 import NodeCard, { type NodeCardData } from "./NodeCard";
 import { useKeyboard } from "./useKeyboard";
+import { computeVisible } from "../filter";
 import { NODE_H, NODE_W } from "../layout/autoLayout";
 import { useGraph } from "../store/useGraph";
-import { isFilterActive, useUI } from "../store/useUI";
-import { REL_LABELS, type DMNode, type NodeType } from "../types";
+import { filterState, isFilterActive, useUI } from "../store/useUI";
+import { REL_LABELS, hierarchicalRels, type DMNode, type NodeType } from "../types";
 
 const nodeTypes = { ibis: NodeCard, groupBox: GroupBox };
 
@@ -372,48 +373,27 @@ function CanvasInner() {
 }
 
 /**
- * Which nodes are "relevant" under the current filter.
+ * Which nodes survive the current filter.
  *
- * Filtering fades rather than hides, and pulls in one hop of context: an open
- * Question with its Ideas removed is not a useful thing to look at. This is
- * what makes "show only open questions and connected ideas" behave the way the
- * phrase suggests.
+ * Filtering fades rather than hides, so the map keeps its shape and you keep
+ * your spatial memory of where things are.
+ *
+ * The rules themselves live in ../filter.ts, which is pure and unit tested.
+ * They used to live here and expanded every match by one hop in each
+ * direction, which quietly pulled back in whatever had just been excluded —
+ * filtering by anything showed almost everything.
  */
 function useVisibleSet(): Set<string> {
   const nodes = useGraph((s) => s.nodes);
   const edges = useGraph((s) => s.edges);
+  const grammar = useGraph((s) => s.grammar);
   const ui = useUI();
 
   return useMemo(() => {
     const all = Object.values(nodes);
     if (!isFilterActive(ui)) return new Set(all.map((n) => n.id));
-
-    const q = ui.filterQuery.trim().toLowerCase();
-    const direct = new Set<string>();
-
-    for (const n of all) {
-      if (!ui.typeFilter.has(n.type)) continue;
-      if (!ui.statusFilter.has(n.content.status)) continue;
-      if (ui.tagFilter && !n.content.tags.includes(ui.tagFilter)) continue;
-      if (ui.filterPreset === "shared" && n.mapCount < 2) continue;
-      if (
-        q &&
-        !n.title.toLowerCase().includes(q) &&
-        !n.content.markdown.toLowerCase().includes(q)
-      )
-        continue;
-      direct.add(n.id);
-    }
-
-    // One hop of neighbours, so matched nodes keep the arguments attached to
-    // them. Two hops would defeat the point of filtering at all.
-    const withContext = new Set(direct);
-    for (const e of Object.values(edges)) {
-      if (direct.has(e.targetNodeId)) withContext.add(e.sourceNodeId);
-      if (direct.has(e.sourceNodeId)) withContext.add(e.targetNodeId);
-    }
-    return withContext;
-  }, [nodes, edges, ui]);
+    return computeVisible(all, Object.values(edges), filterState(ui), hierarchicalRels(grammar));
+  }, [nodes, edges, grammar, ui]);
 }
 
 function edgeColor(rel: string): string {

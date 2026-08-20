@@ -150,6 +150,26 @@ title takes one keystroke rather than one per character. Making a new change
 after undoing discards the redo tail, which is the standard rule — replaying a
 redo against a world that has moved on is how undo systems corrupt state.
 
+## Filtering
+
+Two presets, not four.
+
+**Everything** is the unfiltered map. **Open questions** shows the discussions
+the group has not settled yet. A Question counts as settled when an Idea
+answering it is marked `resolved` — that is what resolving an Idea means, so
+the issue above it is decided. The question, its answers and all the argument
+underneath them fade out together.
+
+Only top-level questions are tested. A settled sub-question inside a live
+debate stays visible, because the reasoning that got the group to this point is
+part of the discussion. Anything with no open question above it — a stranded
+Idea, an unattached Note — fades, since it belongs to no live discussion.
+
+Alongside the presets are status chips and a text box. Every criterion narrows.
+A text match lights the nodes containing the text and nothing else: not their
+children, not their parents. Searching for a word should find the nodes with
+that word in them, not a subtree that happens to hang off one.
+
 ## Transclusion
 
 Nodes are shared, not copied. The same Idea can sit on several maps at once;
@@ -232,8 +252,11 @@ cross-links are its entire purpose.
 - **Auto-layout is a tidy tree, not a force simulation.** An IBIS map *is* a
   tree of arguments; a force layout destroys the one thing that makes it
   readable and moves every node whenever one is added.
-- **Filters fade rather than hide,** and pull in one hop of context. Hiding
-  nodes makes the remaining structure look complete when it is not.
+- **Filters fade rather than hide.** Hiding nodes makes the remaining structure
+  look complete when it is not, and it costs you the spatial memory of where
+  things sit. Every criterion narrows and nothing widens: an earlier version
+  expanded each match by one hop of neighbours, which pulled back in exactly
+  what had just been excluded.
 
 ## Development
 

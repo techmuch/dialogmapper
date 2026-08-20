@@ -24,29 +24,29 @@ const uiFeatures: UiFeature[] = [
   {
     id: 'preset-filters',
     category: 'toolbar',
-    name: 'Preset Filter Pills (Everything, Open Questions, Unresolved, Shared)',
+    name: 'Preset Filter Pills (Everything, Open Questions)',
     badge: 'Filter',
-    description: 'Instant structural filters to isolate specific node categories on the canvas.',
-    howToUse: 'Click "Open questions" to hide answered topics, "Unresolved" to focus on active debate, or "Shared" to highlight transcluded nodes (✳n). Click "Everything" to reset.',
-    whyItMatters: 'Reduces visual noise on large maps without deleting or hiding underlying graph nodes permanently.'
+    description: 'Separates the discussions the group has settled from the ones still live.',
+    howToUse: 'Click "Open questions" to fade out every question the group has already decided, along with its answers and their arguments. A question counts as decided when one of the Ideas answering it is marked resolved. Click "Everything" to reset.',
+    whyItMatters: 'Marking an Idea resolved is how a decision gets recorded, so this asks the map what is left to talk about. Only top-level questions are tested — a settled sub-question inside a live debate stays visible, because the reasoning that got the group here is part of the discussion.'
   },
   {
-    id: 'type-toggles',
+    id: 'status-filters',
     category: 'toolbar',
-    name: 'Node Type Toggle Buttons (? ! + − ·)',
+    name: 'Status Chips (open, resolved, rejected, parked)',
     badge: 'Filter',
-    description: 'Quickly toggle visibility for Questions, Ideas, Pros, Cons, or Notes.',
-    howToUse: 'Click any glyph in the toolbar centre to fade that type out: `?` Question, `!` Idea, `+` Pro, `−` Con, `·` Note. The same glyphs mark the cards themselves and the markdown export.',
-    whyItMatters: 'Enables focusing exclusively on argument structures (e.g. Ideas + Pros/Cons) or notes during facilitation.'
+    description: 'Fade nodes by their status.',
+    howToUse: 'Click any chip in the toolbar centre to drop nodes with that status out of view. They combine with everything else: each control narrows the map further.',
+    whyItMatters: 'Every filter criterion narrows and none widens. An earlier version expanded each match by one hop of neighbours, which pulled back in whatever had just been filtered out, so filtering by anything showed almost everything.'
   },
   {
     id: 'map-search',
     category: 'toolbar',
     name: 'Map Search Bar',
     shortcut: 'Real-time',
-    description: 'Filter nodes on the current map by keyword matching title or content.',
-    howToUse: 'Type into the "Filter on this map…" input. The canvas instantly dims non-matching nodes.',
-    whyItMatters: 'Finds key discussion points quickly across large maps containing dozens of nodes.'
+    description: 'Filter nodes on the current map by keyword, matching title, body or tags.',
+    howToUse: 'Type into the "Filter on this map…" input. The canvas instantly dims everything that does not contain the text.',
+    whyItMatters: 'It lights the nodes containing the text and nothing else — not their children, not their parents. Searching for a word should find the nodes with that word in them, not a subtree that happens to hang off one.'
   },
   {
     id: 'undo-redo',

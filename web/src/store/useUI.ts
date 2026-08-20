@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import type { NodeType, Status } from "../types";
+import { isFilterActive as filterActive, type FilterPreset, type FilterState } from "../filter";
+import type { Status } from "../types";
 
 /**
  * View state, kept apart from graph state so that panning or opening a panel
@@ -7,7 +8,7 @@ import type { NodeType, Status } from "../types";
  * difference between smooth panning and dropped frames.
  */
 
-export type FilterPreset = "all" | "openQuestions" | "unresolved" | "shared";
+export type { FilterPreset };
 
 interface UIState {
   sidebarOpen: boolean;
@@ -20,7 +21,6 @@ interface UIState {
   showMinimap: boolean;
 
   filterPreset: FilterPreset;
-  typeFilter: Set<NodeType>;
   statusFilter: Set<Status>;
   tagFilter: string | null;
   /** Text typed into the on-canvas filter box. */
@@ -33,15 +33,13 @@ interface UIState {
   setLayoutMode: (m: "freeform" | "auto") => void;
   toggleMinimap: () => void;
   setFilterPreset: (p: FilterPreset) => void;
-  toggleType: (t: NodeType) => void;
   toggleStatus: (s: Status) => void;
   setTagFilter: (t: string | null) => void;
   setFilterQuery: (q: string) => void;
   resetFilters: () => void;
 }
 
-const ALL_TYPES: NodeType[] = ["question", "idea", "pro", "con", "note", "map"];
-const ALL_STATUSES: Status[] = ["open", "resolved", "rejected", "parked"];
+export const ALL_STATUSES: Status[] = ["open", "resolved", "rejected", "parked"];
 
 export const useUI = create<UIState>((set, get) => ({
   sidebarOpen: false,
@@ -52,7 +50,6 @@ export const useUI = create<UIState>((set, get) => ({
   showMinimap: localStorage.getItem("dm:minimap") !== "off",
 
   filterPreset: "all",
-  typeFilter: new Set(ALL_TYPES),
   statusFilter: new Set(ALL_STATUSES),
   tagFilter: null,
   filterQuery: "",
@@ -74,52 +71,26 @@ export const useUI = create<UIState>((set, get) => ({
   },
 
   /**
-   * Presets are the common questions people actually ask of a map, expressed
-   * as filters rather than as separate views: "what is still open?", "what is
-   * shared with other maps?".
+   * "Open questions" is purely structural — it selects which questions are
+   * still live and shows what hangs off them. It deliberately does not also
+   * set a status filter: an earlier version did, which hid the resolved
+   * arguments underneath a question that was still open.
    */
-  setFilterPreset: (p) => {
-    switch (p) {
-      case "openQuestions":
-        set({
-          filterPreset: p,
-          typeFilter: new Set<NodeType>(["question", "idea"]),
-          statusFilter: new Set<Status>(["open", "parked"]),
-        });
-        break;
-      case "unresolved":
-        set({
-          filterPreset: p,
-          typeFilter: new Set(ALL_TYPES),
-          statusFilter: new Set<Status>(["open", "parked"]),
-        });
-        break;
-      case "shared":
-        set({ filterPreset: p, typeFilter: new Set(ALL_TYPES), statusFilter: new Set(ALL_STATUSES) });
-        break;
-      default:
-        set({
+  setFilterPreset: (p) =>
+    p === "all"
+      ? set({
           filterPreset: "all",
-          typeFilter: new Set(ALL_TYPES),
           statusFilter: new Set(ALL_STATUSES),
           tagFilter: null,
           filterQuery: "",
-        });
-    }
-  },
-
-  toggleType: (t) =>
-    set((s) => {
-      const next = new Set(s.typeFilter);
-      next.has(t) ? next.delete(t) : next.add(t);
-      return { typeFilter: next, filterPreset: "all" };
-    }),
+        })
+      : set({ filterPreset: p }),
 
   toggleStatus: (st) =>
     set((s) => {
       const next = new Set(s.statusFilter);
       next.has(st) ? next.delete(st) : next.add(st);
-      return { statusFilter: next, filterPreset: "all" };
+      return { statusFilter: next };
     }),
 
   setTagFilter: (t) => set({ tagFilter: t }),
@@ -128,20 +99,28 @@ export const useUI = create<UIState>((set, get) => ({
   resetFilters: () =>
     set({
       filterPreset: "all",
-      typeFilter: new Set(ALL_TYPES),
       statusFilter: new Set(ALL_STATUSES),
       tagFilter: null,
       filterQuery: "",
     }),
 }));
 
-/** True when nothing is being filtered out. */
-export function isFilterActive(s: UIState): boolean {
-  return (
-    s.filterPreset !== "all" ||
-    s.typeFilter.size !== ALL_TYPES.length ||
-    s.statusFilter.size !== ALL_STATUSES.length ||
-    s.tagFilter !== null ||
-    s.filterQuery.trim() !== ""
-  );
+/** The filter, in the shape the pure filtering code expects. */
+export function filterState(s: {
+  filterPreset: FilterPreset;
+  statusFilter: Set<Status>;
+  tagFilter: string | null;
+  filterQuery: string;
+}): FilterState {
+  return {
+    preset: s.filterPreset,
+    statuses: s.statusFilter,
+    tag: s.tagFilter,
+    query: s.filterQuery,
+  };
+}
+
+/** True when anything is being filtered out. */
+export function isFilterActive(s: Parameters<typeof filterState>[0]): boolean {
+  return filterActive(filterState(s), ALL_STATUSES.length);
 }

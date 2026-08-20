@@ -103,22 +103,26 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .pill--icon { padding: 4px 10px; font-size: 15px; line-height: 1; }
 .toolbar__undo { display: inline-flex; gap: 2px; margin-right: 4px; }
 
-.toolbar__types { display: flex; gap: 2px; margin-left: 4px; }
-.type-toggle {
-  width: 26px; height: 26px;
+/* Status filter. Words rather than glyphs: "resolved" and "rejected" are a
+   decision and a refusal, which no icon distinguishes reliably. */
+.toolbar__statuses { display: flex; gap: 2px; margin-left: 4px; }
+.status-toggle {
+  height: 26px;
+  padding: 0 8px;
   border-radius: 6px;
   border: 1px solid var(--line);
   background: var(--bg-3);
+  color: var(--fg-dim);
   cursor: pointer;
-  opacity: .35;
-  font-weight: 700;
+  opacity: .4;
+  font-size: 11px;
+  text-transform: capitalize;
 }
-.type-toggle.is-on { opacity: 1; }
-.type-toggle--question.is-on { color: var(--question); border-color: var(--question); }
-.type-toggle--idea.is-on     { color: var(--idea);     border-color: var(--idea); }
-.type-toggle--pro.is-on      { color: var(--pro);      border-color: var(--pro); }
-.type-toggle--con.is-on      { color: var(--con);      border-color: var(--con); }
-.type-toggle--note.is-on     { color: var(--note);     border-color: var(--note); }
+.status-toggle.is-on { opacity: 1; color: var(--fg); }
+.status-toggle--open.is-on     { border-color: var(--question); color: var(--question); }
+.status-toggle--resolved.is-on { border-color: var(--pro);      color: var(--pro); }
+.status-toggle--rejected.is-on { border-color: var(--con);      color: var(--con); }
+.status-toggle--parked.is-on   { border-color: var(--note);     color: var(--note); }
 
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .status-dot.is-up { background: var(--pro); }

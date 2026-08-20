@@ -1,21 +1,26 @@
 import { useState } from "react";
 import { api } from "../api";
 import { useGraph } from "../store/useGraph";
-import { isFilterActive, useUI, type FilterPreset } from "../store/useUI";
-import { NODE_GLYPHS, type NodeType } from "../types";
+import { ALL_STATUSES, isFilterActive, useUI, type FilterPreset } from "../store/useUI";
 
+/**
+ * Two presets, not four.
+ *
+ * "Unresolved" and "Shared" were dropped: the first is a status filter wearing
+ * a preset's clothes, and the second answered a question about bookkeeping
+ * rather than about the discussion. The per-type glyph toggles went with them —
+ * hiding every Con is not a question anyone asks of an argument map, and they
+ * were the main reason the toolbar looked like it did a lot while doing very
+ * little.
+ */
 const PRESETS: { key: FilterPreset; label: string; hint: string }[] = [
   { key: "all", label: "Everything", hint: "No filter" },
   {
     key: "openQuestions",
     label: "Open questions",
-    hint: "Unresolved Questions and the Ideas answering them",
+    hint: "Questions with no answer marked resolved, and everything under them",
   },
-  { key: "unresolved", label: "Unresolved", hint: "Anything not yet resolved or rejected" },
-  { key: "shared", label: "Shared", hint: "Nodes transcluded into other maps" },
 ];
-
-const TYPES: NodeType[] = ["question", "idea", "pro", "con", "note"];
 
 export function Toolbar() {
   const maps = useGraph((s) => s.maps);
@@ -77,15 +82,20 @@ export function Toolbar() {
           </button>
         ))}
 
-        <span className="toolbar__types">
-          {TYPES.map((t) => (
+        {/* Status chips. The store has carried a statusFilter since the
+            beginning but nothing ever rendered it, so the only way to filter
+            by status was the "Unresolved" preset — which is now gone. */}
+        <span className="toolbar__statuses">
+          {ALL_STATUSES.map((s) => (
             <button
-              key={t}
-              className={`type-toggle type-toggle--${t} ${ui.typeFilter.has(t) ? "is-on" : ""}`}
-              title={`Toggle ${t}`}
-              onClick={() => ui.toggleType(t)}
+              key={s}
+              className={`status-toggle status-toggle--${s} ${
+                ui.statusFilter.has(s) ? "is-on" : ""
+              }`}
+              title={`Show ${s} nodes`}
+              onClick={() => ui.toggleStatus(s)}
             >
-              {NODE_GLYPHS[t]}
+              {s}
             </button>
           ))}
         </span>

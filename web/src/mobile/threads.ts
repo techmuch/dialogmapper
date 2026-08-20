@@ -1,3 +1,4 @@
+import { childLinks, parentLinks } from "../graph";
 import { HIERARCHICAL_FALLBACK, type DMEdge, type DMNode, type Relationship } from "../types";
 
 /**
@@ -39,64 +40,6 @@ export interface Thread {
   latest: string;
 }
 
-interface Link {
-  parentId: string;
-  rel: DMEdge["relationshipType"];
-}
-
-/**
- * Picks each node's parent.
- *
- * IBIS edges point child -> parent, so a node's parent is the target of an edge
- * it is the source of. Hierarchical edges win: a Note that both relates to an
- * Idea and is questioned by something belongs under the Idea. `relates_to` is
- * still used as a fallback, because a Note floating as its own root thread is
- * noise, but it is the reason `linkParents` has to be cycle-safe — only
- * hierarchical edges are cycle-checked in the database, so `A relates_to B`
- * and `B relates_to A` can both exist.
- */
-function linkParents(
-  nodes: Map<string, DMNode>,
-  edges: DMEdge[],
-  hierarchical: Relationship[],
-): Map<string, Link> {
-  const preferred = new Map<string, Link>();
-  const fallback = new Map<string, Link>();
-
-  for (const e of edges) {
-    if (!nodes.has(e.sourceNodeId) || !nodes.has(e.targetNodeId)) continue;
-    if (e.sourceNodeId === e.targetNodeId) continue;
-    const into = hierarchical.includes(e.relationshipType) ? preferred : fallback;
-    // First edge wins, so the list is stable rather than order-of-arrival.
-    if (!into.has(e.sourceNodeId)) {
-      into.set(e.sourceNodeId, { parentId: e.targetNodeId, rel: e.relationshipType });
-    }
-  }
-
-  const chosen = new Map<string, Link>();
-  for (const id of nodes.keys()) {
-    const link = preferred.get(id) ?? fallback.get(id);
-    if (link) chosen.set(id, link);
-  }
-
-  // Break any cycle a relates_to pair may have introduced by orphaning the
-  // node that closes it. Rendering a cycle would hang the phone, which is a
-  // worse failure than one Note showing up as its own thread.
-  for (const id of [...chosen.keys()]) {
-    const seen = new Set<string>([id]);
-    let cur = chosen.get(id)?.parentId;
-    while (cur) {
-      if (seen.has(cur)) {
-        chosen.delete(id);
-        break;
-      }
-      seen.add(cur);
-      cur = chosen.get(cur)?.parentId;
-    }
-  }
-  return chosen;
-}
-
 /**
  * Groups nodes into threads under their root, newest activity first.
  *
@@ -110,20 +53,9 @@ export function buildThreads(
   hierarchical: Relationship[] = HIERARCHICAL_FALLBACK,
 ): Thread[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const parents = linkParents(byId, edges, hierarchical);
-
-  const children = new Map<string, DMNode[]>();
-  const roots: DMNode[] = [];
-  for (const n of nodes) {
-    const link = parents.get(n.id);
-    if (!link) {
-      roots.push(n);
-      continue;
-    }
-    const sibs = children.get(link.parentId);
-    if (sibs) sibs.push(n);
-    else children.set(link.parentId, [n]);
-  }
+  const parents = parentLinks(byId, edges, hierarchical);
+  const children = childLinks(nodes, parents);
+  const roots = nodes.filter((n) => !parents.has(n.id));
 
   // Newest timestamp in each subtree, computed bottom-up from a post-order
   // walk so a deep reply lifts every ancestor with it.
