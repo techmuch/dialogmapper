@@ -672,6 +672,86 @@ func TestRegroupingMovesANodeOut(t *testing.T) {
 
 // TestUndoIsScopedPerActor is the collaboration guarantee: the facilitator
 // pressing Ctrl-Z must never reverse what somebody just sent from a phone.
+// Deleting a map used to be the one destructive operation with no way back.
+// It takes the map's edges, placements and groups with it — but never the
+// nodes, which may be transcluded onto other maps.
+func TestUndoDeleteMapRestoresTheWholeView(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	m, err := as.CreateMap("Doomed", "a map about to go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, _, err := as.CreateNode(NewNodeInput{Type: ibis.Question, Title: "Ship on Fridays?", MapID: m.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idea, _, err := as.CreateNode(NewNodeInput{
+		Type: ibis.Idea, Title: "Only before noon", MapID: m.ID,
+		ParentID: q.ID, Relationship: ibis.RespondsTo,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := as.DeleteMap(m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if maps, _ := s.ListMaps(); len(maps) != 0 {
+		t.Fatalf("map survived the delete: %+v", maps)
+	}
+	// The nodes themselves are still there, which is why deleting a map is
+	// safe to offer at all.
+	if _, err := s.GetNode(idea.ID, ""); err != nil {
+		t.Errorf("deleting a map destroyed a node: %v", err)
+	}
+
+	if _, err := as.Undo(alice, ""); err != nil {
+		t.Fatalf("undo: %v", err)
+	}
+
+	maps, err := s.ListMaps()
+	if err != nil || len(maps) != 1 || maps[0].ID != m.ID {
+		t.Fatalf("map was not restored: %+v (%v)", maps, err)
+	}
+	g, err := s.Graph(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Nodes) != 2 {
+		t.Errorf("placements not restored: %d nodes on the map", len(g.Nodes))
+	}
+	if len(g.Edges) != 1 || g.Edges[0].Relationship != ibis.RespondsTo {
+		t.Errorf("edges not restored: %+v", g.Edges)
+	}
+}
+
+func TestRedoDeleteMap(t *testing.T) {
+	s := newTestStore(t)
+	as := s.As(alice)
+	m, err := as.CreateMap("Doomed", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := as.CreateNode(NewNodeInput{
+		Type: ibis.Question, Title: "A question", MapID: m.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := as.DeleteMap(m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := as.Undo(alice, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := as.Redo(alice, ""); err != nil {
+		t.Fatalf("redo: %v", err)
+	}
+	if maps, _ := s.ListMaps(); len(maps) != 0 {
+		t.Errorf("redo did not delete the map again: %+v", maps)
+	}
+}
+
 func TestUndoIsScopedPerActor(t *testing.T) {
 	s := newTestStore(t)
 	m, _ := s.CreateMap("M", "")

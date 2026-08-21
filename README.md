@@ -56,6 +56,11 @@ without guessing.
 | `dialogmapper seed --context notes.md` | Turns a research document into IBIS scaffolding |
 | `dialogmapper export --format md\|json` | Dumps the graph for downstream LLM processing |
 | `dialogmapper grammar --json` | Prints the edge ruleset |
+| `dialogmapper apply` | Applies JSON mutations from stdin — the door for scripts and agents |
+| `dialogmapper map list\|new\|rm\|clear` | Manages maps |
+| `dialogmapper node add\|edit\|rm` | Creates, changes and removes nodes |
+| `dialogmapper edge add\|rm` | Links and unlinks nodes |
+| `dialogmapper undo\|redo` | Reverses your own command-line changes |
 
 `start --host 0.0.0.0` makes the map reachable from a phone on the same
 network; the URL printed is the LAN address, not `0.0.0.0`.
@@ -230,6 +235,57 @@ Alongside the presets are status chips and a text box. Every criterion narrows.
 A text match lights the nodes containing the text and nothing else: not their
 children, not their parents. Searching for a word should find the nodes with
 that word in them, not a subtree that happens to hang off one.
+
+## Changing a map from the command line
+
+Everything the canvas can do, the CLI can do — without a running server, and
+with nothing on the machine but this binary.
+
+```
+dialogmapper map list
+dialogmapper map new "Rollback policy"
+dialogmapper map rm "Old map" --yes
+
+dialogmapper node add --map Caching --type idea --title "Add a read-through cache" \
+    --parent question_01h... --rel responds_to
+dialogmapper node add --type note --title "Ref: Howard (1966)" \
+    --link "https://doi.org/10.1109/TSSC.1966.300074|Howard 1966" --parent idea_01h...
+dialogmapper node edit idea_01h... --status resolved
+dialogmapper node rm note_01h... --map Caching     # off this map only
+
+dialogmapper edge add pro_01h... idea_01h...       # relationship inferred
+dialogmapper edge rm edge_01h...
+```
+
+For anything scripted or generated, `apply` takes a JSON array on stdin:
+
+```
+echo '[{"op":"create_node","map":"Caching","type":"con",
+        "title":"Invalidation is forever","parent":"idea_01h...","rel":"objects_to"}]' \
+  | dialogmapper apply
+```
+
+`dialogmapper apply --schema` prints the whole contract, generated from the
+code the way `grammar --json` is. `--dry-run` validates without writing, and
+`--json` reports the outcome machine-readably.
+
+**Why this exists.** There used to be exactly one validated way to change a map
+— the HTTP API — and it needed a running server. Anyone working offline or in a
+script had to write SQL straight into `maps.db`, which silently skips the IBIS
+grammar, the JSON shape of `nodes.content`, and the undo journal. Every command
+above goes through the same store methods the HTTP handlers call, so all three
+hold and cannot drift between the two doors.
+
+Every operation except `create_map` is journaled, so `dialogmapper undo`
+reverses it — including deleting a map, which restores its edges, placements
+and groups. Map creation is deliberately excluded: undoing it would delete the
+map, and `undo_log.map_id` cascades, so that delete would wipe the journal for
+everything the map contained. `apply` reports how many of a batch are
+reversible so its undo hint stays true.
+
+A batch is not a single transaction. Operations apply in order and stop at the
+first failure; validation runs over the whole batch first, so the common
+mistakes are caught before anything is written.
 
 ## Update checks
 

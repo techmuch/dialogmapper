@@ -25,11 +25,19 @@ func (s *Store) CreateMap(name, description string) (*Map, error) {
 		ID: NewID("map"), Name: name, Description: description,
 		CreatedAt: nowISO(), UpdatedAt: nowISO(),
 	}
-	_, err := s.db.Exec(
+	// Deliberately not journaled, unlike every other mutation.
+	//
+	// Undoing a map creation would delete the map, and `undo_log.map_id` is
+	// `REFERENCES maps ON DELETE CASCADE` — so that delete would cascade and
+	// wipe the journal entries for everything the map contains, silently
+	// destroying the redo chain for work that had nothing to do with the map
+	// row. Creating a map is cheap to repeat; losing the history inside it is
+	// not. `dialogmapper apply` reports how many of its operations are
+	// reversible so the undo hint it prints stays true.
+	if _, err := s.db.Exec(
 		`INSERT INTO maps (id, name, description, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?)`,
-		m.ID, m.Name, m.Description, m.CreatedAt, m.UpdatedAt)
-	if err != nil {
+		m.ID, m.Name, m.Description, m.CreatedAt, m.UpdatedAt); err != nil {
 		return nil, fmt.Errorf("create map: %w", err)
 	}
 	return m, nil
@@ -119,11 +127,115 @@ func (s *Store) RenameMap(id, name, description string) error {
 // DeleteMap removes a map and its edges/placements. Nodes survive: they may be
 // transcluded elsewhere, and destroying shared thinking as a side effect of
 // deleting one view would be a data-loss bug.
+// It is journaled, so `dialogmapper undo` — and Ctrl+Z in the browser — brings
+// the map back with its edges, placements and groups. Deleting a whole view of
+// a conversation is exactly the kind of thing someone does by accident and
+// needs back, and it is the one destructive operation that used to be final.
 func (s *Store) DeleteMap(id string) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	_, err := s.db.Exec(`DELETE FROM maps WHERE id = ?`, id)
-	return err
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	snap, name, err := snapshotMapTx(tx, id)
+	if err != nil {
+		return err
+	}
+	// Recorded against no map at all, deliberately. `undo_log.map_id` is
+	// `REFERENCES maps ON DELETE CASCADE`, so scoping this entry to the map it
+	// describes would have SQLite delete the journal entry along with the map
+	// — the one record needed to bring it back. A null map scopes the entry
+	// globally, which is also right for the user: after deleting a map there
+	// is no map to be "in".
+	if err := recordTx(tx, "", s.actor, ActionDeleteMap,
+		fmt.Sprintf("delete map %q", name), snap, snap); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM maps WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// snapshotMapTx captures everything a map delete destroys. Nodes are excluded
+// on purpose: DeleteMap leaves them alone.
+func snapshotMapTx(tx *sql.Tx, mapID string) (snapshot, string, error) {
+	var snap snapshot
+
+	var m Map
+	if err := tx.QueryRow(
+		`SELECT id, name, description, created_at, updated_at FROM maps WHERE id = ?`,
+		mapID).Scan(&m.ID, &m.Name, &m.Description, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return snap, "", fmt.Errorf("no map with id %q", mapID)
+		}
+		return snap, "", err
+	}
+	snap.Maps = []Map{m}
+
+	groups, err := tx.Query(
+		`SELECT id, map_id, title, color, created_at FROM groups WHERE map_id = ?`, mapID)
+	if err != nil {
+		return snap, m.Name, err
+	}
+	for groups.Next() {
+		var g Group
+		if err := groups.Scan(&g.ID, &g.MapID, &g.Title, &g.Color, &g.CreatedAt); err != nil {
+			groups.Close()
+			return snap, m.Name, err
+		}
+		snap.Groups = append(snap.Groups, g)
+	}
+	groups.Close()
+	if err := groups.Err(); err != nil {
+		return snap, m.Name, err
+	}
+
+	places, err := tx.Query(
+		`SELECT map_id, node_id, x, y, collapsed, group_id, added_at
+		 FROM map_nodes WHERE map_id = ?`, mapID)
+	if err != nil {
+		return snap, m.Name, err
+	}
+	for places.Next() {
+		var p placement
+		var group sql.NullString
+		if err := places.Scan(&p.MapID, &p.NodeID, &p.X, &p.Y, &p.Collapsed,
+			&group, &p.AddedAt); err != nil {
+			places.Close()
+			return snap, m.Name, err
+		}
+		if group.Valid {
+			p.GroupID = &group.String
+		}
+		snap.Placements = append(snap.Placements, p)
+	}
+	places.Close()
+	if err := places.Err(); err != nil {
+		return snap, m.Name, err
+	}
+
+	edges, err := tx.Query(
+		`SELECT id, map_id, source_node_id, target_node_id, relationship_type, created_at
+		 FROM edges WHERE map_id = ?`, mapID)
+	if err != nil {
+		return snap, m.Name, err
+	}
+	for edges.Next() {
+		var e Edge
+		if err := edges.Scan(&e.ID, &e.MapID, &e.SourceNodeID, &e.TargetNodeID,
+			&e.Relationship, &e.CreatedAt); err != nil {
+			edges.Close()
+			return snap, m.Name, err
+		}
+		snap.Edges = append(snap.Edges, e)
+	}
+	edges.Close()
+	return snap, m.Name, edges.Err()
 }
 
 // --- nodes -----------------------------------------------------------------

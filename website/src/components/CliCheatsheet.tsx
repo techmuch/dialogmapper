@@ -49,6 +49,30 @@ const commands: CliCmd[] = [
     args: '--json',
     description: 'Prints the entire machine-readable IBIS edge ruleset so AI agents can construct valid edges without guessing.',
     example: 'dialogmapper grammar --json'
+  },
+  {
+    name: 'apply',
+    args: '[--schema] [--dry-run] [--json] [-f file]',
+    description: 'Applies a JSON array of mutations from stdin — create_node, update_node, delete_node, create_edge, delete_map and the rest. Every operation goes through the same validation the canvas uses, so the IBIS grammar is enforced, ids are generated for you, and each change is journaled and reversible. No running server and no external tooling required, which is what makes it the supported path for scripts and AI agents instead of writing SQL into maps.db.',
+    example: 'echo \'[{"op":"create_node","map":"Caching","type":"con","title":"Invalidation is forever","parent":"idea_01...","rel":"objects_to"}]\' | dialogmapper apply'
+  },
+  {
+    name: 'map',
+    args: 'list | new <name> | rm <name> | clear <name>',
+    description: 'Manages maps. Deleting one is journaled, so undo brings back its edges, placements and groups — the nodes themselves are never destroyed, since a map is a view and the same node may appear on others.',
+    example: 'dialogmapper map list'
+  },
+  {
+    name: 'node',
+    args: 'add | edit <id> | rm <id>',
+    description: 'Targeted node operations: attach a cited Note to an Idea, mark an Idea resolved, take a node off one map without destroying it elsewhere. Links are given as --link "url|title" so they reach the database as proper objects.',
+    example: 'dialogmapper node edit idea_01... --status resolved'
+  },
+  {
+    name: 'edge',
+    args: 'add <from-id> <to-id> [--rel] | rm <edge-id>',
+    description: 'Links and unlinks nodes. Edges point child to parent, the way they read aloud: a Pro supports an Idea, so from is the Pro. Omit --rel and the IBIS grammar infers the obvious relationship.',
+    example: 'dialogmapper edge add pro_01... idea_01...'
   }
 ];
 

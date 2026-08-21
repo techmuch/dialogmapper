@@ -42,6 +42,7 @@ const (
 	ActionDeleteGroup UndoAction = "group.delete"
 	ActionMoveGroup   UndoAction = "group.move"
 	ActionBulkUpdate  UndoAction = "nodes.bulkUpdate"
+	ActionDeleteMap   UndoAction = "map.delete"
 )
 
 // CLIActor is the actor recorded for changes made by command-line runs, so a
@@ -60,6 +61,10 @@ type snapshot struct {
 	Placements []placement `json:"placements,omitempty"`
 	Edges      []Edge      `json:"edges,omitempty"`
 	Groups     []Group     `json:"groups,omitempty"`
+	// Maps carries whole map rows, for deleting a map. Nodes are deliberately
+	// absent: DeleteMap does not destroy them, since a node may be transcluded
+	// onto other maps and taking it with the view would be data loss.
+	Maps []Map `json:"maps,omitempty"`
 }
 
 type placement struct {
@@ -369,6 +374,42 @@ func applyInverseTx(tx *sql.Tx, action UndoAction, payload string, redo bool) er
 			return err
 		}
 		return restorePlacementStateTx(tx, snap.Placements)
+
+	// Deleting a map takes its edges, placements and groups with it, but never
+	// the nodes themselves. Restoring is therefore the map row first (groups
+	// and placements reference it), then groups, then placements, then edges —
+	// each layer depends on the one before.
+	case ActionDeleteMap:
+		if len(snap.Maps) == 0 {
+			return errors.New("journal entry has no map state")
+		}
+		if redo {
+			for _, m := range snap.Maps {
+				if _, err := tx.Exec(`DELETE FROM maps WHERE id = ?`, m.ID); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		for _, m := range snap.Maps {
+			if _, err := tx.Exec(
+				`INSERT INTO maps (id, name, description, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?)
+				 ON CONFLICT (id) DO UPDATE SET
+				     name = excluded.name, description = excluded.description`,
+				m.ID, m.Name, m.Description, m.CreatedAt, nowISO()); err != nil {
+				return fmt.Errorf("restore map: %w", err)
+			}
+		}
+		for _, g := range snap.Groups {
+			if err := upsertGroupTx(tx, g); err != nil {
+				return err
+			}
+		}
+		if err := restorePlacementsTx(tx, snap); err != nil {
+			return err
+		}
+		return restoreEdgesTx(tx, snap.Edges)
 
 	case ActionDeleteGroup:
 		if redo {

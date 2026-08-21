@@ -45,6 +45,10 @@ copied, so the same idea can appear in several maps at once and stay in sync.`,
 		newExportCmd(),
 		newGrammarCmd(),
 		newUndoCmd(),
+		newApplyCmd(),
+		newMapCmd(),
+		newNodeCmd(),
+		newEdgeCmd(),
 		newRedoCmd(),
 	)
 	return root.Execute()
