@@ -14,8 +14,13 @@ import (
 // projectDir is the resolved project root for the current invocation.
 var projectDir string
 
+// buildVersion is the version this binary was built as, which the update check
+// compares against the newest release.
+var buildVersion string
+
 // Execute runs the command tree.
 func Execute(version string) error {
+	buildVersion = version
 	root := &cobra.Command{
 		Use:   "dialogmapper",
 		Short: "A local-first, AI-friendly IBIS dialog mapping environment",

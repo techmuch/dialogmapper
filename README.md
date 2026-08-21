@@ -231,6 +231,34 @@ A text match lights the nodes containing the text and nothing else: not their
 children, not their parents. Searching for a word should find the nodes with
 that word in them, not a subtree that happens to hang off one.
 
+## Update checks
+
+`dialogmapper start` looks for a newer release. This is the only thing in
+dialogmapper that reaches the internet on its own, so it is worth stating
+exactly what it does:
+
+- **`start` only.** `init`, `seed`, `export`, `grammar` and `undo` never touch
+  the network, so scripts, CI jobs and AI agents stay silent.
+- **Once a day**, cached in the project's own database. GitHub allows 60
+  unauthenticated requests an hour *per IP*, which a team behind one office
+  connection could otherwise exhaust between them.
+- **Nothing about you or your maps is sent.** It is a `GET` to a public
+  endpoint with no query string, no body and no cookies. The `User-Agent` names
+  dialogmapper and its version, so the request is honest about what is asking.
+- **It cannot slow you down.** The cached answer is read from SQLite and the
+  refresh happens in the background, so a new release is reported from the
+  *next* run onward and being offline costs nothing. Every failure — offline,
+  proxied, rate limited — is swallowed silently.
+- **The first run says so** before any request is made, rather than after.
+
+Turn it off with `--no-update-check`, or `DIALOGMAPPER_NO_UPDATE_CHECK=1` to
+disable it everywhere. `DIALOGMAPPER_UPDATE_ENDPOINT` points it at an internal
+mirror instead.
+
+A binary built without release tags — `go build` with no ldflags, or a
+`go install` pseudo-version — never reports being out of date, since it may
+well be ahead of the newest release.
+
 ## Transclusion
 
 Nodes are shared, not copied. The same Idea can sit on several maps at once;

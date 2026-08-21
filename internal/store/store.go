@@ -243,6 +243,33 @@ func (s *Store) DataVersion() (int64, error) {
 	return v, err
 }
 
+// --- metadata --------------------------------------------------------------
+
+// Meta reads a value from the key/value table that already carries the schema
+// version. Returns "" when the key is absent, since every caller treats a
+// missing value and an unreadable one the same way.
+func (s *Store) Meta(key string) string {
+	var v string
+	if err := s.db.QueryRow(
+		`SELECT value FROM schema_meta WHERE key = ?`, key,
+	).Scan(&v); err != nil {
+		return ""
+	}
+	return v
+}
+
+// SetMeta stores a value. Reserved for bookkeeping that belongs to the project
+// rather than to a map — the update-check cache, for instance — so such things
+// need no new files beside maps.db.
+func (s *Store) SetMeta(key, value string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	_, err := s.db.Exec(`
+		INSERT INTO schema_meta (key, value) VALUES (?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, key, value)
+	return err
+}
+
 // --- identifiers -----------------------------------------------------------
 
 var idEncoding = base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").

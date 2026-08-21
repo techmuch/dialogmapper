@@ -189,18 +189,19 @@ test("undoing a retype restores both the type and the relationship", async ({
 });
 
 test("no offered type change produces an error", async ({ page, dm }) => {
+  // The minimap sits over the bottom-right corner and swallows clicks on any
+  // node beneath it. Retyping moves this card around — as a Note it hangs off
+  // the Idea by `relates_to`, which the layout nests like any other link — and
+  // on a map this small it can land under the minimap, making re-selection
+  // fail. Turning the minimap off keeps the test about retyping.
+  await page.addInitScript(() => localStorage.setItem("dm:minimap", "off"));
   await openCanvas(page, dm);
 
   // The complaint that started this: clicking a type essentially always
   // errored. Anything still offered must now succeed. The unavailable ones are
   // allowed to complain — that is their job — so they are skipped here and
   // covered above.
-  //
-  // Note goes last deliberately. As a Note the card hangs off the Idea by
-  // `relates_to`, which the layout now nests like any other link, and on this
-  // small map that puts it under the minimap — which swallows the click needed
-  // to re-select it. Re-ordering avoids depending on that overlap.
-  for (const label of ["Con", "Idea", "Note"]) {
+  for (const label of ["Con", "Note", "Idea"]) {
     await openSidebarFor(page, "Cuts p99 to 200ms");
     const chip = typeChip(page, label);
     if ((await chip.getAttribute("data-unavailable")) === "true") continue;

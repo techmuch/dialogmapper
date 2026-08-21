@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/techmuch/dialogmapper/internal/server"
+	"github.com/techmuch/dialogmapper/internal/update"
 )
 
 func newStartCmd() *cobra.Command {
@@ -27,6 +28,7 @@ func newStartCmd() *cobra.Command {
 	var open bool
 	var noToken bool
 	var noQR bool
+	var noUpdateCheck bool
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -122,11 +124,40 @@ process writing to the same database — is broadcast to all connected clients.`
 				fmt.Fprintf(out, "  (local only — %s)\n", access.Hint)
 			}
 
+			// The update check, and nothing else in dialogmapper, talks to the
+			// internet on its own. It runs here rather than in the root command
+			// so that `seed`, `export` and `grammar` stay silent in scripts, CI
+			// and agent pipelines, where an unannounced network call is worst.
+			if !update.Disabled(st, noUpdateCheck) {
+				if d := update.Disclosure(st); d != "" {
+					fmt.Fprintf(out, "\n%s\n", d)
+				}
+				// The cached answer costs one SQLite read, so being offline or
+				// on a slow link can never be felt at startup. A new release is
+				// therefore reported from the next run onward.
+				if tag, url := update.Cached(st); tag != "" {
+					if n := update.Notice(buildVersion, tag, url); n != "" {
+						fmt.Fprintf(out, "\n%s\n", n)
+					}
+				}
+			}
+
 			fmt.Fprintf(out, "\n  Press Ctrl-C to stop.\n")
 
 			ctx, stop := signal.NotifyContext(context.Background(),
 				os.Interrupt, syscall.SIGTERM)
 			defer stop()
+
+			// Refresh in the background for next time. Nothing waits on it and
+			// every failure is swallowed: rate limits, proxies and flaky wifi
+			// are not worth interrupting a meeting for.
+			if !update.Disabled(st, noUpdateCheck) && update.Due(st, time.Now()) {
+				go func() {
+					c, cancel := context.WithTimeout(ctx, update.Timeout)
+					defer cancel()
+					update.Refresh(c, st, update.EndpointFromEnv(), buildVersion)
+				}()
+			}
 
 			// Watch for writes made by other processes and fan them out.
 			go srv.WatchExternalChanges(ctx)
@@ -169,6 +200,8 @@ process writing to the same database — is broadcast to all connected clients.`
 	cmd.Flags().BoolVar(&noToken, "no-token", false,
 		"serve to the network without an access key (anyone who can reach the port can edit)")
 	cmd.Flags().BoolVar(&noQR, "no-qr", false, "do not print the QR code on startup")
+	cmd.Flags().BoolVar(&noUpdateCheck, "no-update-check", false,
+		"do not contact github.com to look for a newer release")
 	return cmd
 }
 

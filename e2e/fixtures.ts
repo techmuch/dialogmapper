@@ -79,10 +79,18 @@ export const test = base.extend<Options & { dm: DialogMapper }>({
 
     // Port 0 lets the kernel pick, so parallel workers can never collide.
     // The real port is read back from the banner rather than guessed.
+    // The update check is switched off for the whole suite. Every test spawns
+    // its own server against a fresh database, so leaving it on would mean
+    // ninety-odd requests to GitHub per run — enough to hit the 60-per-hour
+    // unauthenticated limit and make the suite depend on the network. The off
+    // switch itself is covered in update.spec.ts.
     const proc: ChildProcess = spawn(
       BINARY,
       ["-C", dir, "start", "--host", dmHost, "--port", "0", "--no-qr"],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, DIALOGMAPPER_NO_UPDATE_CHECK: "1" },
+      },
     );
 
     let stdout = "";
