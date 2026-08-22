@@ -20,7 +20,9 @@ const litTitles = (page: Page) =>
     els.filter((e) => !e.className.includes("is-dimmed")).map((e) => e.textContent?.trim() ?? ""),
   );
 
-const filterBox = (page: Page) => page.getByPlaceholder("Filter on this map…");
+// Matched by class, not by placeholder: the placeholder is copy, and copy
+// changes.
+const filterBox = (page: Page) => page.locator(".toolbar__search");
 
 test("the canvas filter treats spaces as separators", async ({ page, dm }) => {
   await openCanvas(page, dm);

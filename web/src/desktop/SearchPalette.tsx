@@ -3,6 +3,7 @@ import { api } from "../api";
 import { describe, useGraph } from "../store/useGraph";
 import { useUI } from "../store/useUI";
 import { NODE_GLYPHS, NODE_LABELS, type DMNode } from "../types";
+import { parseQuery } from "../search";
 
 /**
  * Find a node, then either go to it or bring it here.
@@ -76,6 +77,7 @@ export function SearchPalette() {
 
   if (!open) return null;
 
+  const queryType = parseQuery(q).type;
   const here = (n: DMNode) => n.id in nodes;
   const parent = selectedId ? nodes[selectedId] : null;
 
@@ -116,7 +118,7 @@ export function SearchPalette() {
         <input
           ref={inputRef}
           className="palette__input"
-          placeholder="Search every map — Enter to go there, ⌥Enter to insert"
+          placeholder="Search every map — start with ? ! + − . for one type"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
@@ -141,6 +143,11 @@ export function SearchPalette() {
         />
 
         <div className="palette__hint">
+          {queryType && (
+            <span className={`type-badge type-badge--${queryType}`}>
+              {NODE_GLYPHS[queryType]} {NODE_LABELS[queryType]}s only
+            </span>
+          )}{" "}
           <kbd>↵</kbd> go to it · <kbd>⌥↵</kbd>{" "}
           {parent ? (
             <>
@@ -192,7 +199,9 @@ export function SearchPalette() {
           {!busy && results.length === 0 && (
             <li className="palette__empty">
               {q
-                ? "Nothing matched."
+                ? queryType
+                  ? `No ${NODE_LABELS[queryType]} matched.`
+                  : "Nothing matched."
                 : "Every node in the project appears here. Start typing to narrow it down."}
             </li>
           )}

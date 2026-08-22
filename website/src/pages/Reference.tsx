@@ -1,5 +1,6 @@
 import { Page, Pager } from "../components/Layout";
 import cli from "../generated/cli.json";
+import { Chip } from "../components/bits";
 
 /**
  * Keyboard and command reference.
@@ -32,6 +33,14 @@ const KEYS: { key: React.ReactNode; action: string }[] = [
   {
     key: <kbd>/</kbd>,
     action: "Search every map — Enter goes to the node, ⌥/Alt Enter inserts it here",
+  },
+  {
+    key: (
+      <>
+        <kbd>?</kbd> <kbd>!</kbd> <kbd>+</kbd> <kbd>−</kbd> <kbd>.</kbd>
+      </>
+    ),
+    action: "Start a filter or a search with one to show only that type",
   },
   { key: <kbd>g</kbd>, action: "Group the selected nodes so they move together" },
   { key: <kbd>a</kbd>, action: "Select everything currently visible" },
@@ -85,6 +94,71 @@ export function Reference() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="narrow" style={{ marginTop: "var(--sp-5)" }}>
+          <h2 id="search">Searching and filtering</h2>
+          <p>
+            The filter box on the canvas, the search field on the phone and the{" "}
+            <kbd>/</kbd> palette all read a query the same way.
+          </p>
+          <p>
+            <strong>Spaces separate terms and every term has to match.</strong>{" "}
+            <code>cache invalidation</code> finds nodes mentioning both words, in any
+            order, each free to land in the title, the body or a tag. Double quotes keep a
+            phrase together: <code>"hot tables"</code>.
+          </p>
+          <p>
+            <strong>A leading glyph narrows to one type.</strong> The space after it is
+            optional, and the marker on its own lists that whole type.
+          </p>
+        </div>
+
+        <div className="table-scroll narrow">
+          <table>
+            <thead>
+              <tr>
+                <th>Start with</th>
+                <th>Shows only</th>
+                <th>Example</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                [
+                  ["?", "question", "? cache"],
+                  ["!", "idea", "! cache"],
+                  ["+", "pro", "+ cache"],
+                  ["−", "con", "- cache"],
+                  [".", "note", ". cache"],
+                ] as const
+              ).map(([glyph, type, example]) => (
+                <tr key={type}>
+                  <td>
+                    <kbd>{glyph}</kbd>
+                  </td>
+                  <td>
+                    <Chip type={type} />
+                  </td>
+                  <td>
+                    <code>{example}</code>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="narrow">
+          <div className="note">
+            <p>
+              The glyph only counts as the <strong>first</strong> character of the query.{" "}
+              <code>why not?</code> and <code>cost - benefit</code> are ordinary searches,
+              and quoting escapes it, so <code>"?"</code> finds a literal question mark.
+              There is no marker for Map — <code>#</code> already means a tag everywhere
+              else.
+            </p>
+          </div>
         </div>
 
         <div className="narrow" style={{ marginTop: "var(--sp-5)" }}>

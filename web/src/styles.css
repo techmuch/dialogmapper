@@ -566,6 +566,35 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .palette__title { flex: 1; }
 .palette__meta { font-size: 11px; color: var(--fg-dim); }
 .palette__empty { color: var(--fg-dim); justify-content: center; cursor: default; }
+/* Says which node type a leading ? ! + − . narrowed the search to.
+   Coloured like the node it stands for, so it reads as "these cards" rather
+   than as another piece of chrome. */
+.type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.type-badge--question { color: var(--question); }
+.type-badge--idea     { color: var(--idea); }
+.type-badge--pro      { color: var(--pro); }
+.type-badge--con      { color: var(--con); }
+.type-badge--note     { color: var(--note); }
+
+/* The badge sits after the input rather than inside it: overlaying it would
+   cover what the user is typing at exactly the moment they are typing it. */
+.toolbar__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .palette__hint kbd {
   font: inherit; font-size: 10px;
   padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px;

@@ -1,7 +1,7 @@
 {
   "name": "dialogmapper-e2e",
   "private": true,
-  "version": "0.1.16",
+  "version": "0.1.17",
   "type": "module",
   "description": "Browser tests that drive the real dialogmapper binary. Kept out of web/ so the frontend build never pulls in a browser runtime.",
   "scripts": {

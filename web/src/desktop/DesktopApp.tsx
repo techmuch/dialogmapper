@@ -96,6 +96,7 @@ const SHORTCUTS: [string, string][] = [
   ["l", "Tidy up with auto-layout"],
   ["Tab", "Toggle the details panel — or double-click a node"],
   ["/", "Search every map — Enter goes to a node, ⌥Enter inserts it here"],
+  ["? ! + − .", "Start a search or filter with one to show only that type"],
   ["Backspace", "Remove from this map (shared nodes survive elsewhere)"],
   ["?", "This list"],
 ];

@@ -3,6 +3,8 @@ package store
 import (
 	"strings"
 	"testing"
+
+	"github.com/techmuch/dialogmapper/internal/ibis"
 )
 
 // The same table exists in web/src/search.test.ts.
@@ -35,6 +37,72 @@ func TestParseSearchTerms(t *testing.T) {
 		got := ParseSearchTerms(c.query)
 		if strings.Join(got, "|") != strings.Join(c.want, "|") {
 			t.Errorf("ParseSearchTerms(%q) = %q, want %q (%s)", c.query, got, c.want, c.why)
+		}
+	}
+}
+
+// TestParseQueryTypeMarker mirrors the TYPE_CASES table in
+// web/src/search.test.ts.
+//
+// The characters are the ones on the cards and on the capture keys, so the
+// shortcut is something the user has been looking at all session. The risk is
+// the opposite one — swallowing a character somebody meant literally — so most
+// of these cases pin where the marker does *not* apply.
+func TestParseQueryTypeMarker(t *testing.T) {
+	cases := []struct {
+		query string
+		typ   ibis.NodeType
+		terms []string
+		why   string
+	}{
+		{"?", ibis.Question, nil, "a marker alone lists that type"},
+		{"!", ibis.Idea, nil, "idea"},
+		{"+", ibis.Pro, nil, "pro"},
+		{"-", ibis.Con, nil, "con"},
+		{".", ibis.Note, nil, "note"},
+		{"−", ibis.Con, nil, "the minus sign the cards actually draw"},
+		{"·", ibis.Note, nil, "the middot the cards actually draw"},
+
+		{"?cache", ibis.Question, []string{"cache"}, "no space needed"},
+		{"? cache", ibis.Question, []string{"cache"}, "a space is allowed"},
+		{"  ? cache", ibis.Question, []string{"cache"}, "leading whitespace first"},
+		{"! cache invalidation", ibis.Idea, []string{"cache", "invalidation"}, "a marker plus several terms"},
+
+		// Where it must NOT apply.
+		{"cache?", "", []string{"cache?"}, "a trailing ? is part of the word"},
+		{"why not?", "", []string{"why", "not?"}, "a question mark inside a phrase is text"},
+		{"cost - benefit", "", []string{"cost", "-", "benefit"}, "a hyphen mid-query is text"},
+		{`"?"`, "", []string{"?"}, "quoting escapes the marker"},
+		{`"? really"`, "", []string{"? really"}, "a quoted phrase is literal"},
+		{"??", ibis.Question, []string{"?"}, "only the first character is a marker"},
+		{"#tag", "", []string{"#tag"}, "# is a tag, not a type"},
+	}
+	for _, c := range cases {
+		got := ParseQuery(c.query)
+		if got.Type != c.typ {
+			t.Errorf("ParseQuery(%q).Type = %q, want %q (%s)", c.query, got.Type, c.typ, c.why)
+		}
+		if strings.Join(got.Terms, "|") != strings.Join(c.terms, "|") {
+			t.Errorf("ParseQuery(%q).Terms = %q, want %q (%s)", c.query, got.Terms, c.terms, c.why)
+		}
+	}
+}
+
+// TestParseQueryLeavesOrdinaryQueriesAlone runs the plain-terms table through
+// ParseQuery: none of them may pick up a type, or the marker has started eating
+// text it should not.
+func TestParseQueryLeavesOrdinaryQueriesAlone(t *testing.T) {
+	for _, q := range []string{
+		"", "   ", "cache", "cache invalidation", "  spaced   out  ", "CaChe",
+		"cache cache", "cache\tinvalidation\nrollback", `"hot tables"`,
+		`perf "hot tables"`, `"unclosed`, `""`, `a "b c"d`,
+	} {
+		got := ParseQuery(q)
+		if got.Type != "" {
+			t.Errorf("ParseQuery(%q) found type %q in an ordinary query", q, got.Type)
+		}
+		if strings.Join(got.Terms, "|") != strings.Join(ParseSearchTerms(q), "|") {
+			t.Errorf("ParseQuery(%q).Terms disagrees with ParseSearchTerms", q)
 		}
 	}
 }
@@ -109,6 +177,70 @@ func TestSearchNarrowsWithEachTerm(t *testing.T) {
 	// ignored.
 	if got := titles("cache unicorn"); len(got) != 0 {
 		t.Errorf("an unmatched term should exclude, got %q", got)
+	}
+}
+
+// TestSearchByTypeMarker covers the shortcut end to end: the phone search and
+// the `/` palette both come through here, so this is the behaviour on two of
+// the three surfaces.
+func TestSearchByTypeMarker(t *testing.T) {
+	s := newTestStore(t)
+	m, _ := s.CreateMap("M", "")
+
+	mk := func(typ ibis.NodeType, title string) {
+		t.Helper()
+		if _, _, err := s.CreateNode(NewNodeInput{Type: typ, Title: title, MapID: m.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(ibis.Question, "Should we cache reads?")
+	mk(ibis.Idea, "Add a read-through cache")
+	mk(ibis.Pro, "Cache hits cut latency")
+	mk(ibis.Con, "Cache invalidation is hard")
+	mk(ibis.Note, "Cache sizing note")
+
+	titles := func(q string) []string {
+		t.Helper()
+		found, err := s.SearchNodes(q, "", 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, 0, len(found))
+		for _, n := range found {
+			out = append(out, n.Title)
+		}
+		return out
+	}
+
+	// Every node mentions "cache", so without a marker they all come back.
+	if got := titles("cache"); len(got) != 5 {
+		t.Fatalf("plain search found %d, want all 5: %q", len(got), got)
+	}
+
+	for _, c := range []struct {
+		query string
+		want  string
+	}{
+		{"? cache", "Should we cache reads?"},
+		{"! cache", "Add a read-through cache"},
+		{"+ cache", "Cache hits cut latency"},
+		{"- cache", "Cache invalidation is hard"},
+		{". cache", "Cache sizing note"},
+	} {
+		got := titles(c.query)
+		if len(got) != 1 || got[0] != c.want {
+			t.Errorf("%q found %q, want just %q", c.query, got, c.want)
+		}
+	}
+
+	// A marker with no terms lists that whole type.
+	if got := titles("?"); len(got) != 1 {
+		t.Errorf("a bare marker found %d, want the 1 question: %q", len(got), got)
+	}
+
+	// The type and the terms both have to match.
+	if got := titles("? invalidation"); len(got) != 0 {
+		t.Errorf("type and terms should both narrow, got %q", got)
 	}
 }
 

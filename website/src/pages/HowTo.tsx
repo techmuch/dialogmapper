@@ -264,6 +264,12 @@ const RECIPES: Recipe[] = [
           and "bring that here".
         </p>
         <p>
+          Start the query with <kbd>?</kbd>, <kbd>!</kbd>, <kbd>+</kbd>, <kbd>−</kbd> or{" "}
+          <kbd>.</kbd> to search one type only — <code>! cache</code> finds Ideas about
+          caching and nothing else. Handy when you know you are looking for an option
+          rather than an argument about one.
+        </p>
+        <p>
           This is worth doing for things that are genuinely one thing: a budget ceiling, a
           regulatory constraint, a commitment made to a customer. It is not worth doing for
           points that merely sound similar — two copies that can diverge are usually more

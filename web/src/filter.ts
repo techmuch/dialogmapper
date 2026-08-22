@@ -1,5 +1,5 @@
 import { childLinks, parentLinks, subtree } from "./graph";
-import { parseTerms } from "./search";
+import { parseQuery } from "./search";
 import type { DMEdge, DMNode, Relationship, Status } from "./types";
 
 /**
@@ -131,12 +131,13 @@ export function computeVisible(
     keep = new Set([...keep].filter((id) => scope.has(id)));
   }
 
-  const terms = parseTerms(f.query);
+  const { type, terms } = parseQuery(f.query);
   const byId = new Map(nodes.map((n) => [n.id, n]));
   for (const id of [...keep]) {
     const n = byId.get(id)!;
     if (!f.statuses.has(n.content.status)) keep.delete(id);
     else if (f.tag && !n.content.tags.includes(f.tag)) keep.delete(id);
+    else if (type && n.type !== type) keep.delete(id);
     else if (terms.length > 0 && !matchesTerms(n, terms)) keep.delete(id);
   }
   return keep;

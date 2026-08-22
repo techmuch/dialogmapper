@@ -251,8 +251,33 @@ Wrap words in double quotes to keep them together: `"hot tables"` matches the
 phrase. An unclosed quote is not an error, and after twelve terms the rest are
 ignored.
 
-The same rule applies in all three places you can search — the filter box on
-the canvas, the search field on the phone, and the `/` palette.
+### Narrowing to one type
+
+Start the query with the glyph of the type you want:
+
+| Type | | Example |
+|------|---|---------|
+| Question | `?` | `? cache` — questions mentioning cache |
+| Idea | `!` | `! cache` |
+| Pro | `+` | `+ cache` |
+| Con | `-` | `- cache` |
+| Note | `.` | `. cache` |
+
+These are the characters already on the cards and on the capture keys, so the
+shortcut is something you have been looking at all session rather than a new
+syntax to learn. The space is optional — `?cache` works — and a marker on its
+own lists that whole type.
+
+It only counts as the **first** character of the query. `why not?` and
+`cost - benefit` are ordinary searches, and quoting escapes it entirely, so
+`"?"` finds a literal question mark. There is no marker for Map: `#` already
+means a tag everywhere else in the tool.
+
+The same rules apply in all three places you can search — the filter box on
+the canvas, the search field on the phone, and the `/` palette. When a type
+marker is active, the filter and the palette say which type they are showing;
+a search that quietly discards four fifths of the map should not look like a
+broken one.
 
 ## The `/` palette
 

@@ -182,6 +182,47 @@ describe("computeVisible", () => {
     expect(shown(computeVisible(mixed, [], { ...base, query: "cache unicorn" }))).toEqual([]);
   });
 
+  it("a leading marker narrows to one node type", () => {
+    // Every node mentions "cache", so the marker is doing all the work.
+    const mixed = [
+      node("cache-question", "question"),
+      node("cache-idea", "idea"),
+      node("cache-pro", "pro"),
+      node("cache-con", "con"),
+      node("cache-note", "note"),
+    ];
+    const lit = (query: string) => shown(computeVisible(mixed, [], { ...base, query }));
+
+    expect(lit("cache")).toHaveLength(5);
+    expect(lit("? cache")).toEqual(["cache-question"]);
+    expect(lit("! cache")).toEqual(["cache-idea"]);
+    expect(lit("+ cache")).toEqual(["cache-pro"]);
+    expect(lit("- cache")).toEqual(["cache-con"]);
+    expect(lit(". cache")).toEqual(["cache-note"]);
+
+    // No space needed, and a bare marker lists the whole type.
+    expect(lit("?cache")).toEqual(["cache-question"]);
+    expect(lit("!")).toEqual(["cache-idea"]);
+
+    // Type and terms both narrow.
+    expect(lit("? idea")).toEqual([]);
+  });
+
+  it("does not treat a marker in the middle of a query as a type", () => {
+    // "why not?" and "cost - benefit" have to keep working as text, or the
+    // shortcut has made ordinary searching unpredictable.
+    const mixed = [
+      node("why-not-cache", "idea"),
+      node("cost-benefit", "question"),
+    ];
+    expect(shown(computeVisible(mixed, [], { ...base, query: "why not" }))).toEqual([
+      "why-not-cache",
+    ]);
+    expect(shown(computeVisible(mixed, [], { ...base, query: "cost benefit" }))).toEqual([
+      "cost-benefit",
+    ]);
+  });
+
   it("a quoted phrase stays together", () => {
     // Splitting on spaces would otherwise make phrase search impossible.
     const mixed = [

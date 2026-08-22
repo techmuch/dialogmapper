@@ -2,6 +2,8 @@ import { useState } from "react";
 import { CLIENT_ID, api } from "../api";
 import { useGraph } from "../store/useGraph";
 import { ALL_STATUSES, isFilterActive, useUI, type FilterPreset } from "../store/useUI";
+import { parseQuery } from "../search";
+import { NODE_GLYPHS, NODE_LABELS } from "../types";
 
 /**
  * Two presets, not four.
@@ -125,6 +127,7 @@ export function Toolbar() {
 
   const ui = useUI();
   const [creating, setCreating] = useState(false);
+  const queryType = parseQuery(ui.filterQuery).type;
 
   return (
     <header className="toolbar">
@@ -189,13 +192,23 @@ export function Toolbar() {
           ))}
         </span>
 
-        <input
-          className="toolbar__search"
-          placeholder="Filter on this map…"
-          value={ui.filterQuery}
-          onChange={(e) => ui.setFilterQuery(e.target.value)}
-          onKeyDown={(e) => e.stopPropagation()}
-        />
+        <span className="toolbar__filter">
+          <input
+            className="toolbar__search"
+            placeholder="Filter — ? ! + − . for a type"
+            value={ui.filterQuery}
+            onChange={(e) => ui.setFilterQuery(e.target.value)}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          {/* A leading marker changes the result quietly, and a filter that
+              silently drops four fifths of the map is indistinguishable from a
+              broken one. Say which type is being shown. */}
+          {queryType && (
+            <span className={`type-badge type-badge--${queryType}`}>
+              {NODE_GLYPHS[queryType]} {NODE_LABELS[queryType]}s only
+            </span>
+          )}
+        </span>
 
         {isFilterActive(ui) && (
           <button className="pill pill--clear" onClick={ui.resetFilters}>
