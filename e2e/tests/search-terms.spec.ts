@@ -85,8 +85,8 @@ test("the phone search treats spaces as separators", async ({ page, dm }) => {
 });
 
 /**
- * The `/` palette searches nodes *not* on the current map, so this needs a
- * second map to search from.
+ * Run from the empty Scratch map so the results are unambiguous — the palette
+ * searches the whole project, including the map you are on.
  */
 test("the / palette treats spaces as separators", async ({ page, dm }) => {
   await openCanvas(page, dm);
@@ -96,7 +96,6 @@ test("the / palette treats spaces as separators", async ({ page, dm }) => {
   await page.locator(".toolbar__map").selectOption({ label: "Scratch (0)" });
   await expect(page.locator(".react-flow__node")).toHaveCount(0);
 
-  await page.locator(".react-flow__pane").click();
   await page.keyboard.press("/");
   const box = page.locator(".palette__input");
   await expect(box).toBeFocused();

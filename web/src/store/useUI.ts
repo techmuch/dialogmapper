@@ -48,6 +48,15 @@ interface UIState {
    */
   jumpTo: ((nodeID: string) => void) | null;
 
+  /**
+   * A node to centre as soon as its map has finished loading.
+   *
+   * jumpTo only works on nodes already rendered, so jumping to something on
+   * another map has to survive the map switch. The palette sets this, opens the
+   * map, and the canvas picks it up once the node exists and clears it.
+   */
+  pendingJump: string | null;
+
   toggleSidebar: (v?: boolean) => void;
   setPalette: (v: boolean) => void;
   setMapMenu: (v: boolean) => void;
@@ -61,6 +70,7 @@ interface UIState {
   setFilterQuery: (q: string) => void;
   setFollowing: (id: string | null) => void;
   setJumpTo: (fn: ((nodeID: string) => void) | null) => void;
+  setPendingJump: (nodeID: string | null) => void;
   resetFilters: () => void;
 }
 
@@ -91,6 +101,7 @@ export const useUI = create<UIState>((set, get) => ({
   filterQuery: "",
   following: null,
   jumpTo: null,
+  pendingJump: null,
 
   toggleSidebar: (v) => set((s) => ({ sidebarOpen: v ?? !s.sidebarOpen })),
   setPalette: (v) => set({ paletteOpen: v }),
@@ -140,6 +151,7 @@ export const useUI = create<UIState>((set, get) => ({
   setFilterQuery: (q) => set({ filterQuery: q }),
   setFollowing: (id) => set({ following: id }),
   setJumpTo: (fn) => set({ jumpTo: fn }),
+  setPendingJump: (nodeID) => set({ pendingJump: nodeID }),
 
   resetFilters: () =>
     set({

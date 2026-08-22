@@ -329,6 +329,22 @@ function CanvasInner() {
     if (target) centreOn(target);
   }, [following, followed, centreOn, mapId, openMap]);
 
+  /**
+   * Landing a jump that had to change maps first.
+   *
+   * The palette can only ask for the switch; the node does not exist on this
+   * canvas until the new graph has loaded, so the request waits here until it
+   * does. Setters come from getState for the same reason as above: depending on
+   * the `ui` object would re-run this on its own write.
+   */
+  const pendingJump = ui.pendingJump;
+  useEffect(() => {
+    if (!pendingJump || !nodes[pendingJump]) return;
+    centreOn(pendingJump);
+    useGraph.getState().select(pendingJump);
+    useUI.getState().setPendingJump(null);
+  }, [pendingJump, nodes, centreOn]);
+
   const rfEdges = useMemo<RFEdge[]>(
     () =>
       Object.values(edges).map((e) => {

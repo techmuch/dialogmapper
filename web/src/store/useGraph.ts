@@ -85,7 +85,8 @@ interface GraphState {
   patchNode: (id: string, patch: Parameters<typeof api.updateNode>[1]) => Promise<void>;
   removeFromMap: (nodeId: string) => Promise<void>;
   deleteEverywhere: (nodeId: string) => Promise<void>;
-  insertExisting: (nodeId: string) => Promise<void>;
+  /** Adds a shared node to this map, optionally linked under `parentId`. */
+  insertExisting: (nodeId: string, parentId?: string) => Promise<void>;
   /** Applies one change to every selected node, as a single undoable action. */
   bulkUpdate: (ops: {
     addTags?: string[];
@@ -488,15 +489,45 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
-  insertExisting: async (nodeId) => {
+  insertExisting: async (nodeId, parentId) => {
     const { mapId, nodes } = get();
     if (!mapId) return;
-    const spot = spaceToTheRight(Object.values(nodes));
+
+    // Under a parent, land where a new child would; otherwise clear of the
+    // graph entirely. An inserted node that appears somewhere unrelated to what
+    // was selected reads as a bug even when the edge is correct.
+    const parent = parentId ? nodes[parentId] : null;
+    const siblings = parent ? childrenOf(get(), parent.id).length : 0;
+    const spot = parent
+      ? freeSpot(
+          (parent.placement?.x ?? 0) + 40 + siblings * 24,
+          (parent.placement?.y ?? 0) + 150 + siblings * 12,
+          Object.values(nodes)
+            .map((n) => n.placement)
+            .filter((p): p is NonNullable<typeof p> => p?.x != null && p?.y != null)
+            .map((p) => ({ x: p.x!, y: p.y! })),
+        )
+      : spaceToTheRight(Object.values(nodes));
+
     try {
-      const node = await api.transclude(mapId, nodeId, spot.x, spot.y);
-      set((s) => ({ nodes: { ...s.nodes, [node.id]: node }, selectedId: node.id }));
-      get().toast(`Inserted "${node.title}" — shared with ${node.mapCount} maps`, "info");
+      const { node, edge } = await api.transclude(mapId, nodeId, {
+        x: spot.x,
+        y: spot.y,
+        parentId: parent?.id,
+      });
+      set((s) => ({
+        nodes: { ...s.nodes, [node.id]: node },
+        edges: edge ? { ...s.edges, [edge.id]: edge } : s.edges,
+        selectedId: node.id,
+      }));
+      get().toast(
+        parent
+          ? `Inserted "${node.title}" under "${parent.title}" — shared with ${node.mapCount} maps`
+          : `Inserted "${node.title}" — shared with ${node.mapCount} maps`,
+        "info",
+      );
     } catch (err) {
+      // A grammar rejection is the useful case: it says which pairs are legal.
       get().toast(describe(err));
     }
   },

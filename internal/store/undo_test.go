@@ -97,7 +97,7 @@ func TestUndoDeleteRestoresEdgesAndPlacements(t *testing.T) {
 
 	// Share the idea onto a second map, then position it differently there.
 	m2, _ := as.CreateMap("M2", "")
-	if err := as.Transclude(m2.ID, idea.ID, f(11), f(22)); err != nil {
+	if _, err := as.Transclude(TranscludeInput{MapID: m2.ID, NodeID: idea.ID, X: f(11), Y: f(22)}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,7 +155,7 @@ func TestUndoRemoveFromMapKeepsOtherMaps(t *testing.T) {
 	m2, _ := as.CreateMap("M2", "")
 
 	q, _, _ := as.CreateNode(NewNodeInput{Type: ibis.Question, Title: "Q", MapID: m.ID})
-	if err := as.Transclude(m2.ID, q.ID, nil, nil); err != nil {
+	if _, err := as.Transclude(TranscludeInput{MapID: m2.ID, NodeID: q.ID}); err != nil {
 		t.Fatal(err)
 	}
 

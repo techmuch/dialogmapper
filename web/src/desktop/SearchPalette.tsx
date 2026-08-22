@@ -5,12 +5,17 @@ import { useUI } from "../store/useUI";
 import { NODE_GLYPHS, NODE_LABELS, type DMNode } from "../types";
 
 /**
- * Search and insert an existing node.
+ * Find a node, then either go to it or bring it here.
  *
- * This is the transclusion entry point, and the reason it is a first-class
- * keystroke (`/`) rather than a buried menu item: reuse only happens if it is
- * faster than retyping. Results are scoped to nodes *not* already on this map,
- * because the useful question here is "what have we already said elsewhere?".
+ * The palette used to do only the second thing, and searched only nodes *not*
+ * on the current map so that inserting could never duplicate. That made it
+ * useless for the more common need — "where did we say that?" — because the
+ * nodes you are most likely to be looking for are the ones in front of you.
+ *
+ * So it searches the whole project now, and the two actions are separated by
+ * key rather than by scope: Enter goes to the node, Option-Enter brings it in
+ * under whatever is selected. Insert stays available on every row as a button,
+ * because a modifier chord is not discoverable on its own.
  */
 export function SearchPalette() {
   const open = useUI((s) => s.paletteOpen);
@@ -18,7 +23,11 @@ export function SearchPalette() {
 
   const mapId = useGraph((s) => s.mapId);
   const maps = useGraph((s) => s.maps);
+  const nodes = useGraph((s) => s.nodes);
+  const selectedId = useGraph((s) => s.selectedId);
   const insertExisting = useGraph((s) => s.insertExisting);
+  const openMap = useGraph((s) => s.openMap);
+  const select = useGraph((s) => s.select);
   const toast = useGraph((s) => s.toast);
 
   const [q, setQ] = useState("");
@@ -31,6 +40,11 @@ export function SearchPalette() {
     if (open) {
       setQ("");
       setCursor(0);
+      // Results too, not just the query. Keeping the last search's rows on
+      // screen under an empty box means the first Enter after reopening can
+      // land on whatever was highlighted last time — which, now that Enter
+      // moves the canvas, sends you somewhere you never asked to go.
+      setResults([]);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
@@ -42,10 +56,12 @@ export function SearchPalette() {
     setBusy(true);
     const t = setTimeout(() => {
       api
-        .search(q, mapId, 25)
-        .then((nodes) => {
+        // No excludeMapId: you cannot jump to a node the search refused to
+        // return, and "already here" is a label, not a reason to hide a row.
+        .search(q, undefined, 25)
+        .then((found) => {
           if (!cancelled) {
-            setResults(nodes);
+            setResults(found);
             setCursor(0);
           }
         })
@@ -60,8 +76,37 @@ export function SearchPalette() {
 
   if (!open) return null;
 
-  const choose = (node: DMNode) => {
-    void insertExisting(node.id);
+  const here = (n: DMNode) => n.id in nodes;
+  const parent = selectedId ? nodes[selectedId] : null;
+
+  /** Go to the node, opening its map first when it lives on another one. */
+  const jump = (n: DMNode) => {
+    setOpen(false);
+    if (here(n)) {
+      select(n.id);
+      useUI.getState().jumpTo?.(n.id);
+      return;
+    }
+    const home = (n.mapIds ?? []).find((id) => id !== mapId);
+    if (!home) {
+      // Every node the search can return is on some map, so this is the
+      // belt-and-braces case rather than an expected one.
+      toast(`"${n.title}" is not on any map yet.`, "info");
+      return;
+    }
+    // The node does not exist on this canvas yet; the switch has to finish
+    // first, so the centring is handed to the canvas to perform on arrival.
+    useUI.getState().setPendingJump(n.id);
+    void openMap(home);
+  };
+
+  /** Bring the node onto this map, under the selection if there is one. */
+  const insert = (n: DMNode) => {
+    if (here(n)) {
+      toast(`"${n.title}" is already on this map.`, "info");
+      return;
+    }
+    void insertExisting(n.id, parent?.id);
     setOpen(false);
   };
 
@@ -71,7 +116,7 @@ export function SearchPalette() {
         <input
           ref={inputRef}
           className="palette__input"
-          placeholder="Search every map for a node to insert…"
+          placeholder="Search every map — Enter to go there, ⌥Enter to insert"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
@@ -87,40 +132,67 @@ export function SearchPalette() {
             }
             if (e.key === "Enter" && results[cursor]) {
               e.preventDefault();
-              choose(results[cursor]);
+              // altKey is Option on a Mac and Alt elsewhere, which is the
+              // same physical key in both cases.
+              if (e.altKey) insert(results[cursor]);
+              else jump(results[cursor]);
             }
           }}
         />
 
         <div className="palette__hint">
-          Inserting shares the node — it is not copied. Edits apply to every map it appears in.
+          <kbd>↵</kbd> go to it · <kbd>⌥↵</kbd>{" "}
+          {parent ? (
+            <>
+              insert under <strong>{parent.title || "the selected node"}</strong>
+            </>
+          ) : (
+            "insert here, unattached"
+          )}
+          . Inserting shares the node — it is not copied.
         </div>
 
         <ul className="palette__results">
           {results.map((n, i) => (
             <li
               key={n.id}
-              className={i === cursor ? "is-active" : ""}
+              className={`${i === cursor ? "is-active" : ""} ${here(n) ? "is-here" : ""}`}
               onMouseEnter={() => setCursor(i)}
-              onClick={() => choose(n)}
+              onClick={() => jump(n)}
             >
               <span className={`glyph glyph--${n.type}`}>{NODE_GLYPHS[n.type]}</span>
               <span className="palette__title">{n.title || "untitled"}</span>
               <span className="palette__meta">
                 {NODE_LABELS[n.type]}
-                {n.mapCount > 0 && (
-                  <>
-                    {" · "}
-                    {mapNames(n, maps)}
-                  </>
-                )}
+                {" · "}
+                {whereItLives(n, mapId, maps)}
               </span>
+              <button
+                type="button"
+                className="palette__insert"
+                // Not `disabled`: the row still responds, and a control that
+                // ignores the pointer cannot explain why it did nothing.
+                data-unavailable={here(n) ? "true" : undefined}
+                aria-label={
+                  here(n)
+                    ? `${n.title} is already on this map`
+                    : parent
+                      ? `Insert ${n.title} under ${parent.title || "the selected node"}`
+                      : `Insert ${n.title}`
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  insert(n);
+                }}
+              >
+                {here(n) ? "On this map" : "Insert"}
+              </button>
             </li>
           ))}
           {!busy && results.length === 0 && (
             <li className="palette__empty">
               {q
-                ? "Nothing matched outside this map."
+                ? "Nothing matched."
                 : "Every node in the project appears here. Start typing to narrow it down."}
             </li>
           )}
@@ -130,13 +202,31 @@ export function SearchPalette() {
   );
 }
 
-function mapNames(node: DMNode, maps: { id: string; name: string }[]): string {
-  const names = (node.mapIds ?? [])
+/**
+ * Where a node lives, from the reader's point of view.
+ *
+ * "On this map" is the thing worth saying first, because it decides which of
+ * the two actions is available.
+ */
+function whereItLives(
+  node: DMNode,
+  mapId: string | null,
+  maps: { id: string; name: string }[],
+): string {
+  const ids = node.mapIds ?? [];
+  const elsewhere = ids
+    .filter((id) => id !== mapId)
     .map((id) => maps.find((m) => m.id === id)?.name)
     .filter(Boolean) as string[];
-  if (names.length === 0) return "unplaced";
-  if (names.length <= 2) return names.join(", ");
-  return `${names[0]} +${names.length - 1} more`;
+
+  if (ids.includes(mapId ?? "")) {
+    return elsewhere.length === 0
+      ? "on this map"
+      : `on this map +${elsewhere.length} more`;
+  }
+  if (elsewhere.length === 0) return "unplaced";
+  if (elsewhere.length <= 2) return elsewhere.join(", ");
+  return `${elsewhere[0]} +${elsewhere.length - 1} more`;
 }
 
 export default SearchPalette;

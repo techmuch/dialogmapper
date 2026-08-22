@@ -293,8 +293,16 @@ func applyInverseTx(tx *sql.Tx, action UndoAction, payload string, redo bool) er
 
 	case ActionTransclude:
 		if redo {
-			return restorePlacementsTx(tx, snap)
+			if err := restorePlacementsTx(tx, snap); err != nil {
+				return err
+			}
+			// An insert made under a parent carries its edge. Restoring only
+			// the placement would put the node back orphaned, so a redo would
+			// quietly produce something different from what was undone.
+			return restoreEdgesTx(tx, snap.Edges)
 		}
+		// removePlacementsTx already deletes every edge touching the node on
+		// this map, which covers the edge this action created.
 		return removePlacementsTx(tx, snap)
 
 	// Field edits and moves store the previous values on one side and the new

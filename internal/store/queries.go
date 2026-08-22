@@ -1020,15 +1020,36 @@ func mergeMoveTx(tx *sql.Tx, actor, mapID, nodeID string, after placement) (bool
 	return err == nil, err
 }
 
-// Transclude adds an existing node to another map. This is the operation that
-// makes a node shared rather than copied: the same id, two placements.
-func (s *Store) Transclude(mapID, nodeID string, x, y *float64) error {
+// TranscludeInput describes one insertion of an existing node onto a map.
+//
+// ParentID is what the `/` palette adds: inserting a node and then linking it
+// under the selected one used to be two API calls, which meant two journal
+// entries and two presses of Ctrl-Z to reverse one apparent action. Doing both
+// in one transaction keeps "insert under this" a single thing that either
+// happens or does not.
+type TranscludeInput struct {
+	MapID  string
+	NodeID string
+	X, Y   *float64
+	// ParentID, when set, links the inserted node beneath that node. The edge
+	// runs child -> parent, the direction IBIS edges point.
+	ParentID string
+	// Relationship is inferred from the two node types when empty.
+	Relationship ibis.Relationship
+}
+
+// Transclude adds an existing node to another map, optionally under a parent.
+// This is the operation that makes a node shared rather than copied: the same
+// id, two placements.
+//
+// Returns the edge it created, if any.
+func (s *Store) Transclude(in TranscludeInput) (*Edge, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
 	tx, err := s.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -1037,27 +1058,83 @@ func (s *Store) Transclude(mapID, nodeID string, x, y *float64) error {
 		`INSERT INTO map_nodes (map_id, node_id, x, y, added_at)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT (map_id, node_id) DO NOTHING`,
-		mapID, nodeID, x, y, now)
+		in.MapID, in.NodeID, in.X, in.Y, now)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// Already on this map: nothing changed, so nothing to journal. Recording
-	// a no-op would make one Ctrl-Z appear to do nothing at all.
-	if n, _ := res.RowsAffected(); n == 0 {
-		return tx.Commit()
+	placed, _ := res.RowsAffected()
+
+	var edge *Edge
+	if in.ParentID != "" {
+		edge, err = linkUnderTx(tx, in.MapID, in.NodeID, in.ParentID, in.Relationship)
+		if err != nil {
+			return nil, err
+		}
 	}
 
+	// Already on this map and no edge asked for: nothing changed, so nothing to
+	// journal. Recording a no-op would make one Ctrl-Z appear to do nothing.
+	if placed == 0 && edge == nil {
+		return nil, tx.Commit()
+	}
+
+	// When the node was already here, the only new thing is the edge, so the
+	// entry has to say so — undoing it must not tear out a placement this
+	// action never made.
+	action, label := ActionTransclude, "inserted a shared node"
 	snap := snapshot{Placements: []placement{
-		{MapID: mapID, NodeID: nodeID, X: x, Y: y, AddedAt: now},
+		{MapID: in.MapID, NodeID: in.NodeID, X: in.X, Y: in.Y, AddedAt: now},
 	}}
+	if placed == 0 {
+		action, label, snap = ActionCreateEdge, "linked a shared node", snapshot{}
+	}
+	if edge != nil {
+		snap.Edges = []Edge{*edge}
+		if placed > 0 {
+			label = "inserted a shared node under another"
+		}
+	}
+
 	if err := clearRedoTx(tx, s.actor); err != nil {
-		return err
+		return nil, err
 	}
-	if err := recordTx(tx, mapID, s.actor, ActionTransclude,
-		"inserted a shared node", snap, snap); err != nil {
-		return err
+	if err := recordTx(tx, in.MapID, s.actor, action, label, snap, snap); err != nil {
+		return nil, err
 	}
-	return tx.Commit()
+	return edge, tx.Commit()
+}
+
+// linkUnderTx builds the child -> parent edge for an insertion, choosing the
+// relationship from the grammar when the caller did not name one.
+//
+// A rejection here is information rather than a failure: the palette shows what
+// would have been legal, the same way dragging an illegal link does.
+func linkUnderTx(
+	tx *sql.Tx, mapID, childID, parentID string, rel ibis.Relationship,
+) (*Edge, error) {
+	if childID == parentID {
+		return nil, errors.New("a node cannot be inserted under itself")
+	}
+	childType, err := nodeTypeTx(tx, childID)
+	if err != nil {
+		return nil, err
+	}
+	parentType, err := nodeTypeTx(tx, parentID)
+	if err != nil {
+		return nil, err
+	}
+	if rel == "" {
+		inferred, ok := ibis.DefaultRelationship(childType, parentType)
+		if !ok {
+			return nil, &ibis.ValidationError{
+				Source: childType, Target: parentType, Relationship: "",
+				Reason:      "no relationship in the IBIS grammar connects these types",
+				Suggestions: ibis.LegalRelationships(childType, parentType),
+			}
+		}
+		rel = inferred
+	}
+	return insertEdgeTx(tx, mapID, childID, parentID, rel, childType, parentType)
 }
 
 // RemoveFromMap detaches a node from one map, deleting the edges that only
@@ -1139,8 +1216,13 @@ func (s *Store) DeleteNode(id string) error {
 }
 
 // SearchNodes finds nodes by title, body or tag across the whole project. Used
-// by the mobile search bar and by "insert existing node" on the canvas, which
-// is why excludeMapID exists: hide what is already on screen.
+// by the mobile search bar and by the canvas palette.
+//
+// excludeMapID hides everything already on one map. The palette no longer asks
+// for that — it searches the whole project so it can jump to a node as well as
+// insert one, and you cannot jump to what the search refused to return. The
+// mobile search still passes nothing, and the parameter stays because hiding
+// the current map is a reasonable thing for a caller to want.
 func (s *Store) SearchNodes(q string, excludeMapID string, limit int) ([]Node, error) {
 	if limit <= 0 {
 		limit = 50
@@ -1173,7 +1255,14 @@ func (s *Store) SearchNodes(q string, excludeMapID string, limit int) ([]Node, e
 		return nil, err
 	}
 	defer rows.Close()
-	return scanNodes(rows)
+	found, err := scanNodes(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillMapIDs(found); err != nil {
+		return nil, err
+	}
+	return found, nil
 }
 
 // RecentNodes powers the mobile linear feed: newest activity first, optionally
@@ -1226,6 +1315,49 @@ func scanNodes(rows *sql.Rows) ([]Node, error) {
 		out = append(out, n)
 	}
 	return out, rows.Err()
+}
+
+// fillMapIDs attaches the maps each node appears on.
+//
+// GetNode does this per node, but a search returns a list, and the palette
+// needs it for every row: to say where a node lives, to tell "already here"
+// from "elsewhere", and to know which map to open when jumping. Doing it in one
+// query rather than one per row keeps a 25-row search at two round trips.
+func (s *Store) fillMapIDs(nodes []Node) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+	ids := make([]any, len(nodes))
+	for i, n := range nodes {
+		ids[i] = n.ID
+	}
+	q := `SELECT node_id, map_id FROM map_nodes
+	      WHERE node_id IN (?` + strings.Repeat(",?", len(ids)-1) + `)
+	      ORDER BY added_at`
+	rows, err := s.db.Query(q, ids...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	byNode := make(map[string][]string, len(nodes))
+	for rows.Next() {
+		var nodeID, mapID string
+		if err := rows.Scan(&nodeID, &mapID); err != nil {
+			return err
+		}
+		byNode[nodeID] = append(byNode[nodeID], mapID)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range nodes {
+		// MapCount comes from its own subquery; keeping the two in step means a
+		// row can never claim to be on three maps while naming one.
+		nodes[i].MapIDs = byNode[nodes[i].ID]
+		nodes[i].MapCount = len(nodes[i].MapIDs)
+	}
+	return nil
 }
 
 // --- graph -----------------------------------------------------------------

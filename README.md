@@ -82,7 +82,7 @@ needs a mouse correction afterwards.
 | `←↑→↓` | Move the selection to the nearest node in that direction |
 | `Space` | Centre on the selection, or fit the whole map |
 | `l` | Tidy up, and save the result as if you had dragged each node there |
-| `/` | Search every map and insert an existing node |
+| `/` | Search every map — `Enter` goes to the node, `⌥/Alt Enter` inserts it |
 | `g` | Group the selected nodes so they move together |
 | `a` | Select everything currently visible |
 | `Ctrl/⌘ Z` | Undo — your own actions only |
@@ -253,6 +253,35 @@ ignored.
 
 The same rule applies in all three places you can search — the filter box on
 the canvas, the search field on the phone, and the `/` palette.
+
+## The `/` palette
+
+`/` searches every node in the project. Arrow keys move down the results, and
+the two things you might want to do with what you find are separate keys:
+
+| | |
+|---|---|
+| `Enter` | Go to that node — centre it on the canvas and select it |
+| `⌥Enter` (`Alt+Enter`) | Insert it here, under whatever is selected |
+| `Insert` button | The same insert, for when a chord is not what you reach for |
+
+Going to a node on a different map switches to that map first. That is what
+"go to" has to mean; refusing to leave the current map would make half the
+results dead ends.
+
+Inserting **shares** the node rather than copying it. The same node then
+appears on both maps, and editing it anywhere changes it everywhere — that is
+the point, and it is why each row says which maps it already lives on. A row
+that is already on this map offers no insert, since it is here to be jumped to.
+
+Insert and link are one action, not two. The node arrives already answering
+whatever was selected, and a single Ctrl-Z takes both away; doing it as two
+calls left a stranded node behind on the first undo. If the pairing breaks the
+IBIS grammar — inserting an Idea under an Idea, say — nothing happens at all,
+and the message names the relationships that would have been legal.
+
+With nothing selected, insert still works: the node lands on the map
+unattached, ready to be linked by dragging.
 
 ## Changing a map from the command line
 

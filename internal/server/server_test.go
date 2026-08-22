@@ -415,18 +415,28 @@ func TestTransclusionOverHTTP(t *testing.T) {
 	}
 	h.json(http.MethodPost, "/api/maps", map[string]string{"Name": "Second"}, &m2)
 
-	var node struct {
-		ID       string   `json:"id"`
-		MapCount int      `json:"mapCount"`
-		MapIDs   []string `json:"mapIds"`
+	// The response carries the edge alongside the node, because an insert can
+	// now also link what it inserted.
+	var out struct {
+		Node struct {
+			ID       string   `json:"id"`
+			MapCount int      `json:"mapCount"`
+			MapIDs   []string `json:"mapIds"`
+		} `json:"node"`
+		Edge *struct {
+			ID string `json:"id"`
+		} `json:"edge"`
 	}
 	res := h.json(http.MethodPost, "/api/nodes/"+qID+"/transclude",
-		map[string]any{"mapId": m2.ID}, &node)
+		map[string]any{"mapId": m2.ID}, &out)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("transclude = %d", res.StatusCode)
 	}
-	if node.MapCount != 2 {
-		t.Errorf("mapCount = %d, want 2 (drives the shared badge)", node.MapCount)
+	if out.Node.MapCount != 2 {
+		t.Errorf("mapCount = %d, want 2 (drives the shared badge)", out.Node.MapCount)
+	}
+	if out.Edge != nil {
+		t.Errorf("no parent was asked for, so no edge should come back: %+v", out.Edge)
 	}
 
 	// Removing from one map must leave the other intact.

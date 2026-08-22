@@ -326,12 +326,24 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 			MapID string   `json:"mapId"`
 			X     *float64 `json:"x"`
 			Y     *float64 `json:"y"`
+			// Optional: link the inserted node beneath this one, in the same
+			// transaction, so one Ctrl-Z reverses the whole thing.
+			ParentID     string            `json:"parentId"`
+			Relationship ibis.Relationship `json:"relationshipType"`
 		}
 		if err := decode(r, &in); err != nil {
 			writeErr(w, err)
 			return
 		}
-		if err := s.actorStore(r).Transclude(in.MapID, id, in.X, in.Y); err != nil {
+		edge, err := s.actorStore(r).Transclude(store.TranscludeInput{
+			MapID:        in.MapID,
+			NodeID:       id,
+			X:            in.X,
+			Y:            in.Y,
+			ParentID:     in.ParentID,
+			Relationship: in.Relationship,
+		})
+		if err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -341,7 +353,10 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.publish(r, Event{Type: "node.transcluded", MapID: in.MapID, Payload: node})
-		writeJSON(w, http.StatusOK, node)
+		if edge != nil {
+			s.publish(r, Event{Type: "edge.created", MapID: in.MapID, Payload: edge})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"node": node, "edge": edge})
 		return
 	}
 

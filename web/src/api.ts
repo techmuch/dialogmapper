@@ -198,11 +198,26 @@ export const api = {
       body: json({ mapId, ...pos }),
     }),
 
-  /** Adds an existing node to this map. The node is shared, not copied. */
-  transclude: (mapId: string, nodeId: string, x?: number, y?: number) =>
-    request<DMNode>(`/api/nodes/${nodeId}/transclude`, {
+  /**
+   * Adds an existing node to this map. The node is shared, not copied.
+   *
+   * `parentId` links it beneath that node in the same transaction, so one
+   * Ctrl-Z reverses the insert and the link together rather than leaving a
+   * stranded node behind.
+   */
+  transclude: (
+    mapId: string,
+    nodeId: string,
+    opts: {
+      x?: number;
+      y?: number;
+      parentId?: string;
+      relationshipType?: Relationship;
+    } = {},
+  ) =>
+    request<{ node: DMNode; edge: DMEdge | null }>(`/api/nodes/${nodeId}/transclude`, {
       method: "POST",
-      body: json({ mapId, x, y }),
+      body: json({ mapId, ...opts }),
     }),
 
   /** Removes a node from one map, leaving it intact everywhere else. */

@@ -128,7 +128,7 @@ func TestTransclusionSharesOneNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Transclude(mapB.ID, ideaID, nil, nil); err != nil {
+	if _, err := s.Transclude(TranscludeInput{MapID: mapB.ID, NodeID: ideaID}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -359,7 +359,7 @@ func TestPlacementIsPerMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Transclude(mapB.ID, ideaID, f(10), f(20)); err != nil {
+	if _, err := s.Transclude(TranscludeInput{MapID: mapB.ID, NodeID: ideaID, X: f(10), Y: f(20)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SetPlacement(mapA, ideaID, f(500), f(600), nil, nil); err != nil {

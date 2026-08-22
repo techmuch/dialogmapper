@@ -566,6 +566,29 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .palette__title { flex: 1; }
 .palette__meta { font-size: 11px; color: var(--fg-dim); }
 .palette__empty { color: var(--fg-dim); justify-content: center; cursor: default; }
+.palette__hint kbd {
+  font: inherit; font-size: 10px;
+  padding: 1px 4px; border: 1px solid var(--line); border-radius: 3px;
+  background: var(--bg-2); color: var(--fg);
+}
+
+/* Insert stays legible on every row rather than appearing on hover: a control
+   that only exists once you point at it is one most people never find. */
+.palette__insert {
+  flex: none;
+  font: inherit; font-size: 11px;
+  padding: 3px 9px;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: var(--bg-2); color: var(--fg-dim);
+  cursor: pointer;
+}
+.palette__results li.is-active .palette__insert { color: var(--fg); border-color: var(--fg-dim); }
+.palette__insert:hover { background: var(--bg-1); color: var(--fg); }
+/* Already on this map: still clickable, and says so when clicked. */
+.palette__insert[data-unavailable] {
+  opacity: .5; cursor: default; border-style: dashed;
+}
+.palette__insert[data-unavailable]:hover { background: var(--bg-2); color: var(--fg-dim); }
 
 .help {
   padding: 20px 24px 24px;
