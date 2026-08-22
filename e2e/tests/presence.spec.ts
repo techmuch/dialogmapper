@@ -175,6 +175,10 @@ test("closing a tab releases everything it held", async ({ page, browser, dm }) 
 test("a phone tapping a node shows on the canvas", async ({ page, browser, dm }) => {
   await openCanvas(page, dm);
   const handset = await phone(browser, dm);
+  // Wait for the phone to actually be in the room before tapping. `networkidle`
+  // says the page loaded, not that its WebSocket joined, and a tap sent before
+  // then is presence nobody hears.
+  await expect(page.locator(".who__dot")).toHaveCount(2, { timeout: 10_000 });
 
   await handset.locator(".m-row", { hasText: "Add a read-through cache" }).first().click();
 
@@ -194,6 +198,7 @@ test("a node being edited on the canvas shows as locked on the phone", async ({
 }) => {
   await openCanvas(page, dm);
   const handset = await phone(browser, dm);
+  await expect(page.locator(".who__dot")).toHaveCount(2, { timeout: 10_000 });
 
   await selectNode(page, "Add a read-through cache");
   await page.keyboard.press("F2");

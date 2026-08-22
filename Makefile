@@ -5,7 +5,7 @@
 # dependencies — not even a Node install on the target machine.
 
 BINARY  := dialogmapper
-VERSION ?= v0.1.10
+VERSION ?= v0.1.11
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .PHONY: all build web website go-build dev test test-e2e e2e-browser lint clean install release

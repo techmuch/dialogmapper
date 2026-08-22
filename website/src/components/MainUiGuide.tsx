@@ -31,6 +31,15 @@ const uiFeatures: UiFeature[] = [
     whyItMatters: 'Marking an Idea resolved is how a decision gets recorded, so this asks the map what is left to talk about. Only top-level questions are tested — a settled sub-question inside a live debate stays visible, because the reasoning that got the group here is part of the discussion.'
   },
   {
+    id: 'presence-roster',
+    category: 'toolbar',
+    name: 'Participant Dots (presence)',
+    badge: 'Live',
+    description: 'Everyone connected to this project, and what they have hold of.',
+    howToUse: 'Each connection gets a name and colour. Click a dot to jump to whatever that person has selected; double-click to follow them as they move, including a phone tapping rows. Stop with Esc, another click on the dot, or by clicking the map. Nodes are outlined in the colour of whoever has them selected, and marked with a pencil when somebody is editing.',
+    whyItMatters: 'Editing takes a lock the server enforces, so a second tab or a script cannot overwrite what somebody is typing. Locks release when the editor closes, on disconnect, and after two minutes idle — a suspended laptop keeps its socket open, so disconnection alone is not a guarantee.'
+  },
+  {
     id: 'status-filters',
     category: 'toolbar',
     name: 'Status Chips (open, resolved, rejected, parked)',

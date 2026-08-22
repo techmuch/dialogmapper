@@ -30,22 +30,82 @@ const PRESETS: { key: FilterPreset; label: string; hint: string }[] = [
  */
 function Roster() {
   const participants = useGraph((s) => s.participants);
+  const toast = useGraph((s) => s.toast);
+  const following = useUI((s) => s.following);
+  const setFollowing = useUI((s) => s.setFollowing);
+  const jumpTo = useUI((s) => s.jumpTo);
+
   if (participants.length < 2) return null;
+
+  /** Where a participant is, if anywhere. */
+  const focusOf = (p: (typeof participants)[number]) => p.editing || p.selected?.[0];
+
   return (
     <span className="who" title="Everyone connected to this project">
-      {participants.map((p) => (
-        <span
-          key={p.id}
-          className={`who__dot ${p.id === CLIENT_ID ? "who__me" : ""}`}
-          style={{ background: p.color }}
-          title={
-            `${p.name}${p.id === CLIENT_ID ? " (you)" : ""}` +
-            (p.surface === "mobile" ? " — on a phone" : "") +
-            (p.editing ? " — editing" : "")
-          }
-        />
-      ))}
+      {participants.map((p) => {
+        const me = p.id === CLIENT_ID;
+        const where = focusOf(p);
+        const isFollowed = following === p.id;
+        return (
+          <button
+            key={p.id}
+            className={`who__dot ${me ? "who__me" : ""} ${isFollowed ? "is-following" : ""}`}
+            style={{ background: p.color }}
+            data-participant={p.id}
+            // A single click jumps once; a double click also follows. The jump
+            // is not delayed to wait for a possible second click, because
+            // jumping to the same node twice is invisible and a quarter of a
+            // second of lag on every click is not.
+            onClick={() => {
+              if (me) return;
+              if (isFollowed) {
+                setFollowing(null);
+                return;
+              }
+              if (!where) {
+                toast(`${p.name} has nothing selected yet.`, "info");
+                return;
+              }
+              jumpTo?.(where);
+            }}
+            onDoubleClick={() => {
+              if (me) return;
+              setFollowing(p.id);
+              if (where) jumpTo?.(where);
+            }}
+            title={
+              me
+                ? `${p.name} (you)`
+                : `${p.name}` +
+                  (p.surface === "mobile" ? " — on a phone" : "") +
+                  (p.editing ? " — editing" : "") +
+                  (isFollowed
+                    ? " — following; click to stop"
+                    : "\nClick to jump to them, double-click to follow")
+            }
+          />
+        );
+      })}
     </span>
+  );
+}
+
+/**
+ * Following banner.
+ *
+ * Follow is a mode, and a mode with no visible state is a mode people get
+ * stuck in wondering why the canvas keeps moving on its own.
+ */
+function FollowBanner() {
+  const following = useUI((s) => s.following);
+  const setFollowing = useUI((s) => s.setFollowing);
+  const who = useGraph((s) => s.participants.find((p) => p.id === following));
+  if (!who) return null;
+  return (
+    <button className="following" onClick={() => setFollowing(null)}>
+      <span className="who__dot" style={{ background: who.color }} />
+      Following {who.name} · Esc to stop
+    </button>
   );
 }
 
@@ -96,6 +156,7 @@ export function Toolbar() {
 
         <span className="toolbar__count">{nodeCount} nodes</span>
         <Roster />
+        <FollowBanner />
       </div>
 
       <div className="toolbar__center">

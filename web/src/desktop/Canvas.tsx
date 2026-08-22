@@ -116,6 +116,7 @@ function CanvasInner() {
   const groupSelection = useGraph((s) => s.groupSelection);
   const runAutoLayout = useGraph((s) => s.runAutoLayout);
   const grammar = useGraph((s) => s.grammar);
+  const participants = useGraph((s) => s.participants);
 
   const ui = useUI();
 
@@ -264,6 +265,61 @@ function CanvasInner() {
     };
   }, [editingId]);
 
+  /**
+   * Centre the canvas on a node without changing how big anything looks.
+   *
+   * Reads React Flow's rendered position rather than the saved placement: under
+   * auto layout the two differ, and centring on a stale coordinate lands on
+   * empty space.
+   */
+  const centreOn = useCallback((nodeID: string) => {
+    const flow = flowRef.current;
+    const n = flow?.getNode(nodeID);
+    if (!flow || !n) return false;
+    void flow.setCenter(
+      n.position.x + (n.measured?.width ?? NODE_W) / 2,
+      n.position.y + (n.measured?.height ?? NODE_H) / 2,
+      { duration: 300, zoom: flow.getZoom() },
+    );
+    return true;
+  }, []);
+
+  /**
+   * Following somebody: stay on whatever they have selected.
+   *
+   * Driven by the participant roster, so it tracks a phone tapping rows just as
+   * well as a canvas moving its selection. Following somebody who has selected
+   * nothing simply waits — they will select something in a moment, and dropping
+   * out silently would be worse than an empty beat.
+   */
+  // The toolbar cannot move the viewport itself, so it borrows this.
+  //
+  // Reached through getState rather than the `ui` object from useUI(): that
+  // object gets a new identity on every store update, so depending on it here
+  // would re-run this effect on its own write, forever. The canvas simply
+  // stops rendering when that happens, with no error to explain why.
+  useEffect(() => {
+    useUI.getState().setJumpTo(centreOn);
+    return () => useUI.getState().setJumpTo(null);
+  }, [centreOn]);
+
+  const following = ui.following;
+  const followed = useMemo(
+    () => participants.find((p) => p.id === following) ?? null,
+    [participants, following],
+  );
+  useEffect(() => {
+    if (!following) return;
+    // The person left: nothing to follow, and staying in the mode would leave
+    // a banner naming somebody who is not here.
+    if (!followed) {
+      useUI.getState().setFollowing(null);
+      return;
+    }
+    const target = followed.editing || followed.selected?.[0];
+    if (target) centreOn(target);
+  }, [following, followed, centreOn]);
+
   const rfEdges = useMemo<RFEdge[]>(
     () =>
       Object.values(edges).map((e) => {
@@ -385,6 +441,7 @@ function CanvasInner() {
         }}
         onNodeClick={(ev, node) => {
           if (node.type === "groupBox") return;
+          ui.setFollowing(null);
           // Shift-click adds to the selection, which is how a group gets
           // assembled out of nodes that a marquee would not cleanly enclose.
           if (ev.shiftKey) toggleSelected(node.id);
@@ -399,7 +456,10 @@ function CanvasInner() {
           ui.toggleSidebar();
         }}
         onEdgeDoubleClick={(_, edge) => void unlink(edge.id)}
-        onPaneClick={() => select(null)}
+        onPaneClick={() => {
+          select(null);
+          ui.setFollowing(null);
+        }}
         // There was an onDoubleClick here that created a root Question at the
         // pointer. It never once did that: React Flow binds d3-zoom's
         // `dblclick.zoom` to the pane, which stops propagation, so the handler

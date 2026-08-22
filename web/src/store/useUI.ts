@@ -33,6 +33,21 @@ interface UIState {
   /** Text typed into the on-canvas filter box. */
   filterQuery: string;
 
+  /**
+   * The participant this tab is following, or null.
+   *
+   * Following is a view mode, not graph state: it belongs to this browser and
+   * nobody else needs to know about it, so it never leaves the client.
+   */
+  following: string | null;
+  /**
+   * Registered by the canvas, which owns the viewport.
+   *
+   * The toolbar lives outside the ReactFlow provider, so it cannot move the
+   * view itself; this is the same arrangement as the presence sender.
+   */
+  jumpTo: ((nodeID: string) => void) | null;
+
   toggleSidebar: (v?: boolean) => void;
   setPalette: (v: boolean) => void;
   setMapMenu: (v: boolean) => void;
@@ -44,6 +59,8 @@ interface UIState {
   toggleStatus: (s: Status) => void;
   setTagFilter: (t: string | null) => void;
   setFilterQuery: (q: string) => void;
+  setFollowing: (id: string | null) => void;
+  setJumpTo: (fn: ((nodeID: string) => void) | null) => void;
   resetFilters: () => void;
 }
 
@@ -72,6 +89,8 @@ export const useUI = create<UIState>((set, get) => ({
   statusFilter: new Set(ALL_STATUSES),
   tagFilter: null,
   filterQuery: "",
+  following: null,
+  jumpTo: null,
 
   toggleSidebar: (v) => set((s) => ({ sidebarOpen: v ?? !s.sidebarOpen })),
   setPalette: (v) => set({ paletteOpen: v }),
@@ -119,6 +138,8 @@ export const useUI = create<UIState>((set, get) => ({
 
   setTagFilter: (t) => set({ tagFilter: t }),
   setFilterQuery: (q) => set({ filterQuery: q }),
+  setFollowing: (id) => set({ following: id }),
+  setJumpTo: (fn) => set({ jumpTo: fn }),
 
   resetFilters: () =>
     set({

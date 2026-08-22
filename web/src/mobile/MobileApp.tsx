@@ -263,6 +263,11 @@ export function MobileApp() {
           onClear={() => setReplyTo(null)}
           onPosted={() => {
             setReplyTo(null);
+            // Drop back to the threaded feed. Replying from a search result
+            // otherwise leaves you looking at a list your new reply is not in,
+            // so the thing you just wrote appears to have gone nowhere.
+            setQuery("");
+            setResults(null);
             void refresh(mapId);
           }}
           onError={setError}

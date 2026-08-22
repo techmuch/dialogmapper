@@ -405,6 +405,17 @@ Locks release when the editor closes, when the edit is committed, when the
 client disconnects, and after two minutes idle — a suspended laptop keeps its
 socket open, so disconnection alone is not enough of a guarantee.
 
+**Click a dot to jump to them.** The canvas centres on whatever that person has
+selected, at your zoom rather than theirs. **Double-click to follow**, and it
+keeps up as they move — including a phone tapping rows, since a tap is that
+surface's selection.
+
+Following ends when you click a node or the canvas, press `Esc`, click the dot
+again, or they disconnect. Panning and zooming do not end it, so you can look
+around and still be carried along when they move next. A banner names who you
+are following and how to stop, because a mode that moves the canvas on its own
+with nothing on screen to explain it is a mode people get stuck in.
+
 Presence lives in memory only. It describes a moment rather than the map, so it
 is never written to `maps.db` and nothing survives a restart — a lock that
 outlived the server would be one nobody could release.

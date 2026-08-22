@@ -12,8 +12,8 @@ import (
 
 // version is overridden at build time:
 //
-//	go build -ldflags "-X main.version=v0.1.10"
-var version = "v0.1.10"
+//	go build -ldflags "-X main.version=v0.1.11"
+var version = "v0.1.11"
 
 func main() {
 	if err := cli.Execute(version); err != nil {

@@ -242,7 +242,10 @@ export function useKeyboard({ flow, visibleNodes }: Options) {
         }
 
         case "Escape": {
-          if (ui.paletteOpen) ui.setPalette(false);
+          // Following first: it is the mode most likely to be confusing, since
+          // the canvas appears to move on its own.
+          if (ui.following) ui.setFollowing(null);
+          else if (ui.paletteOpen) ui.setPalette(false);
           else if (ui.helpOpen) ui.setHelp(false);
           else if (ui.sidebarOpen) ui.toggleSidebar(false);
           else g.select(null);

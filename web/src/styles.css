@@ -180,8 +180,32 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
 .who__dot {
   width: 9px; height: 9px; border-radius: 50%;
   border: 1px solid rgba(255,255,255,.25);
+  padding: 0;
+  cursor: pointer;
 }
-.who__me { outline: 1px solid var(--fg-dim); outline-offset: 1px; }
+.who__me { outline: 1px solid var(--fg-dim); outline-offset: 1px; cursor: default; }
+/* Following: a ring, so the dot you are tied to is obvious at a glance. */
+.who__dot.is-following {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px currentColor;
+  color: var(--fg);
+}
+
+/* Follow is a mode, and a mode with no visible state is one people get stuck
+   in wondering why the canvas keeps moving on its own. */
+.following {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-3);
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+.following:hover { color: var(--fg); }
 
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .status-dot.is-up { background: var(--pro); }
