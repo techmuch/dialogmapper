@@ -162,6 +162,35 @@ describe("computeVisible", () => {
     expect(shown(computeVisible(tagged, [], { ...base, query: "latency" }))).toEqual(["a", "b"]);
   });
 
+  it("every word has to match, and a word may land anywhere", () => {
+    // "cache latency" should not look for that exact string. Each word can
+    // match the title, the body or a tag independently.
+    // The helper uses the id as the title, so these ids read as titles.
+    const mixed = [
+      node("read-through-cache", "idea", "open", { markdown: "cuts latency" }),
+      node("cache-warming", "idea"),
+      node("latency-budget", "idea"),
+    ];
+    expect(shown(computeVisible(mixed, [], { ...base, query: "cache latency" }))).toEqual([
+      "read-through-cache",
+    ]);
+    // Word order is not word adjacency.
+    expect(shown(computeVisible(mixed, [], { ...base, query: "latency cache" }))).toEqual([
+      "read-through-cache",
+    ]);
+    // A word that appears nowhere excludes everything rather than being ignored.
+    expect(shown(computeVisible(mixed, [], { ...base, query: "cache unicorn" }))).toEqual([]);
+  });
+
+  it("a quoted phrase stays together", () => {
+    // Splitting on spaces would otherwise make phrase search impossible.
+    const mixed = [
+      node("a", "idea", "open", { markdown: "denormalise the hot tables" }),
+      node("b", "idea", "open", { markdown: "tables are hot in summer" }),
+    ];
+    expect(shown(computeVisible(mixed, [], { ...base, query: '"hot tables"' }))).toEqual(["a"]);
+  });
+
   it("narrows rather than widens when criteria combine", () => {
     const got = computeVisible(nodes, edges, {
       ...base,

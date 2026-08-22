@@ -237,6 +237,23 @@ A text match lights the nodes containing the text and nothing else: not their
 children, not their parents. Searching for a word should find the nodes with
 that word in them, not a subtree that happens to hang off one.
 
+### Search terms
+
+Spaces separate terms and a node has to match every one of them, so
+`cache invalidation` finds nodes mentioning both words rather than nodes
+containing that exact phrase. Order does not matter, and each word may land in
+the title, the body or a tag independently — `perf cache` finds a node tagged
+`#perf` whose title mentions caching. Typing another word narrows the result,
+which is the point: as a single substring it would usually empty it instead,
+because two words are rarely adjacent in the order you typed them.
+
+Wrap words in double quotes to keep them together: `"hot tables"` matches the
+phrase. An unclosed quote is not an error, and after twelve terms the rest are
+ignored.
+
+The same rule applies in all three places you can search — the filter box on
+the canvas, the search field on the phone, and the `/` palette.
+
 ## Changing a map from the command line
 
 Everything the canvas can do, the CLI can do — without a running server, and

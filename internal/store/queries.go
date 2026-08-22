@@ -1145,14 +1145,22 @@ func (s *Store) SearchNodes(q string, excludeMapID string, limit int) ([]Node, e
 	if limit <= 0 {
 		limit = 50
 	}
-	pattern := "%" + strings.ToLower(strings.TrimSpace(q)) + "%"
+	// Whitespace separates terms and every one has to match, so a second word
+	// narrows the result instead of emptying it. Each term may land in the
+	// title or anywhere in the content JSON, which covers body, tags and links.
+	terms := ParseSearchTerms(q)
 	sqlStr := `
 		SELECT n.id, n.type, n.title, n.content, n.map_ref_id,
 		       n.created_at, n.updated_at,
 		       (SELECT count(*) FROM map_nodes mn2 WHERE mn2.node_id = n.id)
 		FROM nodes n
-		WHERE (? = '%%' OR lower(n.title) LIKE ? OR lower(n.content) LIKE ?)`
-	args := []any{pattern, pattern, pattern}
+		WHERE 1 = 1`
+	var args []any
+	for _, t := range terms {
+		pattern := "%" + t + "%"
+		sqlStr += ` AND (lower(n.title) LIKE ? OR lower(n.content) LIKE ?)`
+		args = append(args, pattern, pattern)
+	}
 	if excludeMapID != "" {
 		sqlStr += ` AND n.id NOT IN (SELECT node_id FROM map_nodes WHERE map_id = ?)`
 		args = append(args, excludeMapID)

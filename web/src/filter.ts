@@ -1,4 +1,5 @@
 import { childLinks, parentLinks, subtree } from "./graph";
+import { parseTerms } from "./search";
 import type { DMEdge, DMNode, Relationship, Status } from "./types";
 
 /**
@@ -86,13 +87,18 @@ export function openQuestionScope(
   return keep;
 }
 
-/** Whether a node's own text matches the query. */
-function matchesQuery(n: DMNode, q: string): boolean {
-  return (
-    n.title.toLowerCase().includes(q) ||
-    n.content.markdown.toLowerCase().includes(q) ||
-    n.content.tags.some((t) => t.toLowerCase().includes(q))
-  );
+/**
+ * Whether a node matches every term.
+ *
+ * Every term, not any: typing another word narrows the result. Each term may
+ * match in any of the title, the body or a tag, so "perf cache" finds a node
+ * tagged #perf whose title mentions caching.
+ */
+function matchesTerms(n: DMNode, terms: string[]): boolean {
+  const haystack = [n.title, n.content.markdown, ...n.content.tags]
+    .join("\n")
+    .toLowerCase();
+  return terms.every((t) => haystack.includes(t));
 }
 
 export function isFilterActive(f: FilterState, allStatuses: number): boolean {
@@ -125,13 +131,13 @@ export function computeVisible(
     keep = new Set([...keep].filter((id) => scope.has(id)));
   }
 
-  const q = f.query.trim().toLowerCase();
+  const terms = parseTerms(f.query);
   const byId = new Map(nodes.map((n) => [n.id, n]));
   for (const id of [...keep]) {
     const n = byId.get(id)!;
     if (!f.statuses.has(n.content.status)) keep.delete(id);
     else if (f.tag && !n.content.tags.includes(f.tag)) keep.delete(id);
-    else if (q && !matchesQuery(n, q)) keep.delete(id);
+    else if (terms.length > 0 && !matchesTerms(n, terms)) keep.delete(id);
   }
   return keep;
 }
