@@ -20,8 +20,12 @@ func newInitCmd() *cobra.Command {
 		Long: `Creates maps.db, an .assets directory for local images, and starter
 AGENTS.md and README.md files.
 
-Re-running init is safe: an existing database is left alone unless --force is
-given, and existing markdown files are never overwritten.`,
+Safe to re-run. Nothing is ever deleted: an existing database is left exactly
+as it is, and files that are already there are not touched.
+
+--force rewrites the generated AGENTS.md and README.md from this binary, which
+is how you refresh the agent guidance after upgrading. It still never touches
+your maps. The previous copy is kept alongside as .bak if it differed.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := resolveDir()
 			if err != nil {
@@ -31,17 +35,11 @@ given, and existing markdown files are never overwritten.`,
 				return err
 			}
 
-			dbPath := filepath.Join(dir, store.DBFileName)
-			if store.Exists(dir) && !force {
-				return fmt.Errorf(
-					"%s already exists — pass --force to reinitialize (this deletes every map)",
-					dbPath)
-			}
-			if force && store.Exists(dir) {
-				for _, suffix := range []string{"", "-wal", "-shm"} {
-					_ = os.Remove(dbPath + suffix)
-				}
-			}
+			// Whether the database is ours to create decides whether a first
+			// map is created below. An existing one is opened and left alone —
+			// `init` has no destructive path at all, so re-running it can never
+			// cost anybody their work.
+			fresh := !store.Exists(dir)
 
 			assets := filepath.Join(dir, store.AssetsDirName)
 			if err := os.MkdirAll(assets, 0o755); err != nil {
@@ -60,39 +58,111 @@ given, and existing markdown files are never overwritten.`,
 			}
 			defer st.Close()
 
-			m, err := st.CreateMap(mapName, "")
-			if err != nil {
-				return err
-			}
-
-			created := []string{store.DBFileName, store.AssetsDirName + "/"}
-			for name, body := range map[string]string{
-				"AGENTS.md": agentsTemplate,
-				"README.md": readmeTemplate(filepath.Base(dir), mapName),
-			} {
-				wrote, err := writeIfAbsent(filepath.Join(dir, name), body)
-				if err != nil {
+			var firstMap *store.Map
+			if fresh {
+				if firstMap, err = st.CreateMap(mapName, ""); err != nil {
 					return err
-				}
-				if wrote {
-					created = append(created, name)
 				}
 			}
 
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Initialized dialogmapper project in %s\n", dir)
+			created := []string{}
+			if fresh {
+				created = append(created, store.DBFileName, store.AssetsDirName+"/")
+			}
+
+			// The generated docs describe *this* binary's behaviour, so they go
+			// stale as the tool changes — the agent guidance has already
+			// documented rules that no longer exist. --force is how you catch
+			// them up, and it is deliberately the only thing --force does.
+			refreshed := []string{}
+			for _, doc := range []struct{ name, body string }{
+				{"AGENTS.md", agentsTemplate},
+				{"README.md", readmeTemplate(filepath.Base(dir), mapName)},
+			} {
+				path := filepath.Join(dir, doc.name)
+				wrote, err := writeIfAbsent(path, doc.body)
+				if err != nil {
+					return err
+				}
+				if wrote {
+					created = append(created, doc.name)
+					continue
+				}
+				if !force {
+					continue
+				}
+				changed, err := rewriteDoc(path, doc.body)
+				if err != nil {
+					return err
+				}
+				if changed {
+					refreshed = append(refreshed, doc.name)
+				}
+			}
+
+			if fresh {
+				fmt.Fprintf(out, "Initialized dialogmapper project in %s\n", dir)
+			} else {
+				fmt.Fprintf(out, "dialogmapper project already in %s — nothing was removed\n", dir)
+			}
 			for _, c := range created {
 				fmt.Fprintf(out, "  + %s\n", c)
 			}
-			fmt.Fprintf(out, "\nCreated map %q (%s)\n", m.Name, m.ID)
-			fmt.Fprintf(out, "\nNext: dialogmapper start --open\n")
+			for _, r := range refreshed {
+				fmt.Fprintf(out, "  ~ %s (refreshed; previous copy kept as %s.bak)\n", r, r)
+			}
+			if !fresh && len(created) == 0 && len(refreshed) == 0 {
+				if force {
+					fmt.Fprintf(out, "  everything is already up to date\n")
+				} else {
+					fmt.Fprintf(out, "  pass --force to refresh AGENTS.md and README.md\n")
+				}
+			}
+
+			if firstMap != nil {
+				fmt.Fprintf(out, "\nCreated map %q (%s)\n", firstMap.Name, firstMap.ID)
+				fmt.Fprintf(out, "\nNext: dialogmapper start --open\n")
+			} else {
+				maps, err := st.ListMaps()
+				if err == nil {
+					fmt.Fprintf(out, "\n%d map(s) untouched. Add another with: dialogmapper map new <name>\n",
+						len(maps))
+				}
+			}
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&mapName, "map", "Untitled Map", "name of the first map")
-	cmd.Flags().BoolVar(&force, "force", false, "delete and recreate an existing database")
+	cmd.Flags().BoolVar(&force, "force", false,
+		"rewrite the generated AGENTS.md and README.md; never touches your maps")
 	return cmd
+}
+
+// rewriteDoc replaces a generated file, keeping the old one alongside.
+//
+// Reports whether anything actually changed, so re-running --force on an
+// up-to-date project neither writes a pointless backup nor claims to have done
+// something.
+func rewriteDoc(path, body string) (bool, error) {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	if string(existing) == body {
+		return false, nil
+	}
+	// Kept rather than discarded: somebody may have added project-specific
+	// notes to the generated file, and losing them silently would be exactly
+	// the kind of thing this command no longer does.
+	if err := os.WriteFile(path+".bak", existing, 0o644); err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func readmeTemplate(dirName, mapName string) string {

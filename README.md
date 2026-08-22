@@ -51,7 +51,7 @@ without guessing.
 
 | Command | What it does |
 |---------|--------------|
-| `dialogmapper init` | Scaffolds `maps.db`, `.assets/`, `AGENTS.md`, `README.md` |
+| `dialogmapper init` | Scaffolds `maps.db`, `.assets/`, `AGENTS.md`, `README.md`; safe to re-run |
 | `dialogmapper start --open` | Serves the UI on `localhost:7373` and opens a browser |
 | `dialogmapper seed --context notes.md` | Turns a research document into IBIS scaffolding |
 | `dialogmapper export --format md\|json` | Dumps the graph for downstream LLM processing |
@@ -61,6 +61,7 @@ without guessing.
 | `dialogmapper node add\|edit\|rm` | Creates, changes and removes nodes |
 | `dialogmapper edge add\|rm` | Links and unlinks nodes |
 | `dialogmapper undo\|redo` | Reverses your own command-line changes |
+| `dialogmapper upgrade` | Replaces this binary with the latest release |
 
 `start --host 0.0.0.0` makes the map reachable from a phone on the same
 network; the URL printed is the LAN address, not `0.0.0.0`.
@@ -286,6 +287,32 @@ reversible so its undo hint stays true.
 A batch is not a single transaction. Operations apply in order and stop at the
 first failure; validation runs over the whole batch first, so the common
 mistakes are caught before anything is written.
+
+## Upgrading
+
+```
+dialogmapper upgrade --check     # what would be installed
+dialogmapper upgrade             # download, verify, replace
+```
+
+Downloads the published build for your platform and replaces the running
+binary. **No Go toolchain required** — the release build is fetched, not
+compiled.
+
+- **Verified.** The download is checked against the `SHA256SUMS` published with
+  the release, and refused outright on a mismatch. A truncated transfer or a
+  bad proxy fails loudly instead of installing a broken binary. This protects
+  against corruption in transit; it does not protect against a compromised
+  release, which needs signing.
+- **Atomic.** The new binary is downloaded beside the old one and moved into
+  place with a rename, so an interrupted upgrade leaves either the old binary
+  or the new one, never half of either. The previous binary is kept as `.old`
+  on Windows, where a running executable cannot be replaced in place.
+- **Nothing is executed.** The downloaded file is written, verified and moved.
+  Run `dialogmapper --version` yourself to confirm.
+- **It respects package managers.** Under Homebrew, Nix or snap it refuses and
+  names the right command instead, because replacing a package-managed file
+  works only until the manager puts its own copy back.
 
 ## Update checks
 

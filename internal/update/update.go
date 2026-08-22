@@ -40,8 +40,9 @@ const Timeout = 5 * time.Second
 
 // Release is the fragment of GitHub's response that matters.
 type Release struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
+	TagName string  `json:"tag_name"`
+	HTMLURL string  `json:"html_url"`
+	Assets  []Asset `json:"assets"`
 }
 
 // Latest fetches the most recent published release.

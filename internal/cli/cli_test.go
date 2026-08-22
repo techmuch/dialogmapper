@@ -77,31 +77,42 @@ func TestInitScaffoldsAProject(t *testing.T) {
 	}
 }
 
-func TestInitRefusesToClobberAndNeverOverwritesEdits(t *testing.T) {
+func TestReRunningInitNeverDestroysAnything(t *testing.T) {
 	dir := t.TempDir()
 	run(t, dir, newInitCmd())
 
-	// Re-running must not silently destroy a project full of thinking.
-	err := runExpectingError(t, dir, newInitCmd())
-	if err == nil {
-		t.Fatal("second init should have refused")
-	}
-	if !strings.Contains(err.Error(), "--force") {
-		t.Errorf("error should point at --force, got: %v", err)
-	}
+	// It used to refuse here and point at --force, which deleted maps.db and
+	// every map with it. There is no destructive path any more, so a second
+	// run simply succeeds and leaves the project alone.
+	run(t, dir, newInitCmd())
 
-	// A README the user has edited is theirs, even under --force.
+	// Without --force an existing generated file is left exactly as it is.
 	readme := filepath.Join(dir, "README.md")
 	if err := os.WriteFile(readme, []byte("# My own notes\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	run(t, dir, newInitCmd(), "--force")
+	run(t, dir, newInitCmd())
 	got, err := os.ReadFile(readme)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(got) != "# My own notes\n" {
-		t.Errorf("--force overwrote an edited README:\n%s", got)
+		t.Errorf("init overwrote an edited README:\n%s", got)
+	}
+
+	// With --force it is refreshed, and the edited copy is kept alongside
+	// rather than discarded.
+	run(t, dir, newInitCmd(), "--force")
+	refreshed, err := os.ReadFile(readme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(refreshed) == "# My own notes\n" {
+		t.Error("--force should have refreshed the generated README")
+	}
+	backup, err := os.ReadFile(readme + ".bak")
+	if err != nil || !strings.Contains(string(backup), "My own notes") {
+		t.Errorf("the edited copy was not kept: %q (%v)", backup, err)
 	}
 }
 

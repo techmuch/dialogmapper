@@ -5,7 +5,7 @@
 # dependencies — not even a Node install on the target machine.
 
 BINARY  := dialogmapper
-VERSION ?= v0.1.9
+VERSION ?= v0.1.10
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .PHONY: all build web website go-build dev test test-e2e e2e-browser lint clean install release
@@ -64,6 +64,12 @@ release: web
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch \
 			go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY)-$$os-$$arch$$ext . ; \
 	done
+	@# `dialogmapper upgrade` refuses to install anything whose hash is not
+	@# listed here, so a truncated download or a bad proxy fails loudly
+	@# instead of replacing a working binary with a broken one.
+	@cd dist && (command -v sha256sum >/dev/null && sha256sum $(BINARY)-* > SHA256SUMS \
+		|| shasum -a 256 $(BINARY)-* > SHA256SUMS)
+	@echo "  SHA256SUMS"
 
 clean:
 	rm -rf $(BINARY) dist web/node_modules internal/web/dist website/dist website/node_modules \

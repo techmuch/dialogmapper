@@ -29,8 +29,12 @@ jobs:
           node-version: '20'
 
       - name: Build Cross-Platform Binaries
+        # The tag is passed through as VERSION so the published binaries report
+        # the version they actually are. Without it they all carry the default
+        # baked into the Makefile, which makes `dialogmapper upgrade` and the
+        # update check compare against a number that never changes.
         run: |
-          make release
+          make release VERSION=${{ github.ref_name }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -41,6 +45,7 @@ jobs:
             dist/dialogmapper-linux-amd64
             dist/dialogmapper-linux-arm64
             dist/dialogmapper-windows-amd64.exe
+            dist/SHA256SUMS
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false

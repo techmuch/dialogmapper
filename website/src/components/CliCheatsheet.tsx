@@ -10,8 +10,8 @@ interface CliCmd {
 const commands: CliCmd[] = [
   {
     name: 'init',
-    args: '',
-    description: 'Scaffolds maps.db, .assets/, AGENTS.md, and README.md in current directory',
+    description: 'Scaffolds maps.db, .assets/, AGENTS.md, and README.md in the current directory. Safe to re-run: nothing is ever deleted, and an existing database is left exactly as it is. --force rewrites the generated AGENTS.md and README.md from the current binary \u2014 how you refresh the agent guidance after upgrading \u2014 keeping the previous copy as .bak and still never touching your maps.',
+    args: '[--map <name>] [--force]',
     example: 'dialogmapper init'
   },
   {
@@ -49,6 +49,12 @@ const commands: CliCmd[] = [
     args: '--json',
     description: 'Prints the entire machine-readable IBIS edge ruleset so AI agents can construct valid edges without guessing.',
     example: 'dialogmapper grammar --json'
+  },
+  {
+    name: 'upgrade',
+    args: '[--check] [--yes]',
+    description: 'Replaces this binary with the latest published release. No Go toolchain required \u2014 the release build for your platform is downloaded, not compiled. The download is verified against the SHA256SUMS published with the release and refused on a mismatch, and the swap is a rename within the same directory so an interrupted upgrade can never leave a half-written binary. Under Homebrew, Nix or snap it refuses and names the right command instead.',
+    example: 'dialogmapper upgrade --check'
   },
   {
     name: 'apply',
