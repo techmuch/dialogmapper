@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { ApiError, CLIENT_ID, api, onMutation } from "../api";
 import { autoLayout, freeSpot } from "../layout/autoLayout";
 import { NODE_LABELS, REL_LABELS, hierarchicalRels } from "../types";
+import type { PresenceMessage } from "../ws";
 import type {
   DMEdge,
   DMGroup,
@@ -9,6 +10,7 @@ import type {
   DMNode,
   Grammar,
   NodeType,
+  Participant,
   Relationship,
   ServerEvent,
   Status,
@@ -31,6 +33,10 @@ interface GraphState {
   edges: Record<string, DMEdge>;
   groups: Record<string, DMGroup>;
   grammar: Grammar | null;
+  /** Everyone else connected to this project, from the server. */
+  participants: Participant[];
+  /** Reports this tab's selection and editing state to the server. */
+  presence: ((m: PresenceMessage) => void) | null;
 
   /** The node the keyboard acts on. Exactly one, always. */
   selectedId: string | null;
@@ -102,6 +108,9 @@ interface GraphState {
   refreshUndoState: () => Promise<void>;
 
   applyEvent: (e: ServerEvent) => void;
+  setPresenceSender: (fn: ((m: PresenceMessage) => void) | null) => void;
+  /** Who holds this node open, if anyone other than this tab. */
+  lockedBy: (nodeId: string) => Participant | null;
   setConnected: (v: boolean) => void;
   toast: (message: string, kind?: Toast["kind"]) => void;
   dismissToast: (id: number) => void;
@@ -120,6 +129,8 @@ export const useGraph = create<GraphState>((set, get) => ({
   edges: {},
   groups: {},
   grammar: null,
+  participants: [],
+  presence: null,
   selectedId: null,
   multiSelected: new Set<string>(),
   editingId: null,
@@ -212,14 +223,24 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
-  select: (id) => set({ selectedId: id, multiSelected: new Set(), editingId: null }),
+  select: (id) => {
+    set({ selectedId: id, multiSelected: new Set(), editingId: null });
+    get().presence?.({ type: "select", nodes: id ? [id] : [] });
+    // Selecting elsewhere means the previous editor is closed, so the lock it
+    // held has to go with it — otherwise clicking away would leave a node
+    // locked against everybody until this tab closed.
+    get().presence?.({ type: "done" });
+  },
 
-  setSelection: (ids) =>
+  setSelection: (ids) => {
     set({
       selectedId: ids[0] ?? null,
       multiSelected: new Set(ids.slice(1)),
       editingId: null,
-    }),
+    });
+    get().presence?.({ type: "select", nodes: ids });
+    get().presence?.({ type: "done" });
+  },
 
   toggleSelected: (id) =>
     set((s) => {
@@ -246,8 +267,28 @@ export const useGraph = create<GraphState>((set, get) => ({
     return selectedId ? [selectedId, ...multiSelected] : [...multiSelected];
   },
 
-  beginEdit: (id) => set({ selectedId: id, editingId: id }),
-  cancelEdit: () => set({ editingId: null }),
+  /**
+   * Opens the inline title editor and claims the node.
+   *
+   * Refused when somebody else is already editing it: the server would reject
+   * the write anyway, and letting someone type into a field whose contents can
+   * never be saved is worse than saying so up front.
+   */
+  beginEdit: (id) => {
+    const holder = get().lockedBy(id);
+    if (holder) {
+      get().toast(`${holder.name} is editing this node.`, "error");
+      return;
+    }
+    set({ selectedId: id, editingId: id });
+    get().presence?.({ type: "select", nodes: [id] });
+    get().presence?.({ type: "editing", nodeId: id });
+  },
+
+  cancelEdit: () => {
+    set({ editingId: null });
+    get().presence?.({ type: "done" });
+  },
 
   /**
    * Enter commits the title and drops focus but keeps the node selected, so
@@ -257,6 +298,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   commitTitle: async (id, title) => {
     const node = get().nodes[id];
     set({ editingId: null, selectedId: id });
+    get().presence?.({ type: "done" });
     if (!node || node.title === title) return;
     set((s) => ({ nodes: { ...s.nodes, [id]: { ...node, title } } }));
     try {
@@ -652,8 +694,15 @@ export const useGraph = create<GraphState>((set, get) => ({
    * in-flight edit.
    */
   applyEvent: (e) => {
-    if (e.origin && e.origin === CLIENT_ID) return;
+    if (e.type !== "presence" && e.origin && e.origin === CLIENT_ID) return;
     const { mapId } = get();
+
+    // Presence is not scoped to a map and is not an echo to ignore: it is the
+    // roster, including this tab.
+    if (e.type === "presence") {
+      set({ participants: (e.payload as Participant[]) ?? [] });
+      return;
+    }
 
     switch (e.type) {
       case "graph.invalidated":
@@ -758,6 +807,21 @@ export const useGraph = create<GraphState>((set, get) => ({
   },
 
   setConnected: (v) => set({ connected: v }),
+
+  setPresenceSender: (fn) => set({ presence: fn }),
+
+  /**
+   * Who is holding a node open, other than this tab.
+   *
+   * Returns null for this tab's own lock: your own editor should never look
+   * locked to you.
+   */
+  lockedBy: (nodeId) => {
+    for (const p of get().participants) {
+      if (p.editing === nodeId && p.id !== CLIENT_ID) return p;
+    }
+    return null;
+  },
 
   toast: (message, kind = "error") => {
     const id = ++toastSeq;

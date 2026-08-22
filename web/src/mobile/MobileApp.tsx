@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { CLIENT_ID, api } from "../api";
 import { describe } from "../store/useGraph";
 import { connectWS } from "../ws";
 import {
@@ -12,9 +12,11 @@ import {
   type DMNode,
   type Grammar,
   type NodeType,
+  type Participant,
   type Relationship,
 } from "../types";
 import { buildThreads, type Thread, type ThreadRow } from "./threads";
+import type { WSClient } from "../ws";
 import "./mobile.css";
 
 /**
@@ -45,6 +47,8 @@ export function MobileApp() {
   const [replyTo, setReplyTo] = useState<DMNode | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [live, setLive] = useState(false);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const wsRef = useRef<WSClient | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -109,10 +113,23 @@ export function MobileApp() {
   // reconciliation code for a view that shows twenty rows.
   useEffect(() => {
     const ws = connectWS(
-      () => void refresh(mapId),
+      (e) => {
+        // Presence is the roster, not a change to the map, so it must not
+        // trigger a refetch.
+        if (e.type === "presence") {
+          setParticipants((e.payload as Participant[]) ?? []);
+          return;
+        }
+        void refresh(mapId);
+      },
       setLive,
+      "mobile",
     );
-    return () => ws.close();
+    wsRef.current = ws;
+    return () => {
+      wsRef.current = null;
+      ws.close();
+    };
   }, [mapId, refresh]);
 
   // Debounced global search across every map, not just this one.
@@ -207,7 +224,10 @@ export function MobileApp() {
                 key={n.id}
                 row={{ node: n, depth: 0, indent: 0, parent: null, rel: null, latest: n.updatedAt }}
                 isNew={false}
-                onReply={() => setReplyTo(n)}
+                onReply={() => {
+                  setReplyTo(n);
+                  wsRef.current?.send({ type: "select", nodes: [n.id] });
+                }}
               />
             ))}
           </>
@@ -222,10 +242,14 @@ export function MobileApp() {
               <ThreadBlock
                 key={t.root.id}
                 thread={t}
+                participants={participants}
                 collapsed={collapsed.has(t.root.id)}
                 onToggle={() => toggleThread(t.root.id)}
                 isNew={isNew}
-                onReply={setReplyTo}
+                onReply={(n) => {
+                  setReplyTo(n);
+                  wsRef.current?.send({ type: "select", nodes: [n.id] });
+                }}
               />
             ))}
           </>
@@ -257,12 +281,14 @@ export function MobileApp() {
  */
 function ThreadBlock({
   thread,
+  participants,
   collapsed,
   onToggle,
   isNew,
   onReply,
 }: {
   thread: Thread;
+  participants: Participant[];
   collapsed: boolean;
   onToggle: () => void;
   isNew: (n: DMNode) => boolean;
@@ -278,7 +304,12 @@ function ThreadBlock({
       {/* The root, then the control, then the replies. Above the root it reads
           as a heading for the whole list; below the replies it reads as
           belonging to the next thread. Between the two it is unambiguous. */}
-      <Row row={root} isNew={isNew(root.node)} onReply={() => onReply(root.node)} />
+      <Row
+        row={root}
+        participants={participants}
+        isNew={isNew(root.node)}
+        onReply={() => onReply(root.node)}
+      />
       {hidden > 0 && (
         <button className="m-thread__toggle" onClick={onToggle} aria-expanded={!collapsed}>
           <span className="m-thread__caret">{collapsed ? "▸" : "▾"}</span>
@@ -288,7 +319,13 @@ function ThreadBlock({
       )}
       {!collapsed &&
         rest.map((r) => (
-          <Row key={r.node.id} row={r} isNew={isNew(r.node)} onReply={() => onReply(r.node)} />
+          <Row
+            key={r.node.id}
+            row={r}
+            participants={participants}
+            isNew={isNew(r.node)}
+            onReply={() => onReply(r.node)}
+          />
         ))}
     </section>
   );
@@ -296,17 +333,26 @@ function ThreadBlock({
 
 function Row({
   row,
+  participants = [],
   isNew,
   onReply,
 }: {
   row: ThreadRow;
+  participants?: Participant[];
   isNew: boolean;
   onReply: () => void;
 }) {
   const { node, indent, parent, rel } = row;
+  // Everyone else looking at this node, and whoever has it open for editing.
+  const watchers = participants.filter(
+    (p) => p.id !== CLIENT_ID && (p.selected?.includes(node.id) || p.editing === node.id),
+  );
+  const locked = participants.find((p) => p.editing === node.id && p.id !== CLIENT_ID);
   return (
     <article
-      className={`m-row m-row--${node.type} ${isNew ? "is-new" : ""}`}
+      className={`m-row m-row--${node.type} ${isNew ? "is-new" : ""} ${
+        locked ? "is-locked" : ""
+      }`}
       data-depth={row.depth}
       style={{ marginLeft: `${indent * 14}px` }}
       onClick={onReply}
@@ -322,6 +368,18 @@ function Row({
         <span className={`m-glyph m-glyph--${node.type}`}>{NODE_GLYPHS[node.type]}</span>
         <span className="m-row__type">{NODE_LABELS[node.type]}</span>
         {isNew && <span className="m-new">new</span>}
+        {watchers.map((p) => (
+          <span
+            key={p.id}
+            className="m-who"
+            style={{ background: p.color }}
+            title={
+              p.editing === node.id ? `${p.name} is editing this` : `${p.name} is here`
+            }
+          >
+            {p.editing === node.id ? "\u270e" : ""}
+          </span>
+        ))}
         {node.mapCount > 1 && (
           <span className="m-badge" title={`Shared with ${node.mapCount - 1} other maps`}>
             ✳{node.mapCount}

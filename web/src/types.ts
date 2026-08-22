@@ -111,6 +111,22 @@ export interface Grammar {
   rules: GrammarRule[];
 }
 
+/**
+ * Someone else connected to the same project.
+ *
+ * Ephemeral: the server keeps this in memory only, so it describes who is here
+ * now rather than anything about the map.
+ */
+export interface Participant {
+  id: string;
+  name: string;
+  color: string;
+  selected?: string[];
+  /** The one node this participant is holding open; nobody else may edit it. */
+  editing?: string;
+  surface?: "desktop" | "mobile";
+}
+
 /** Server-sent state changes. Payload shape varies by type. */
 export interface ServerEvent {
   type:
@@ -128,7 +144,8 @@ export interface ServerEvent {
     | "edge.deleted"
     | "group.saved"
     | "group.deleted"
-    | "graph.invalidated";
+    | "graph.invalidated"
+    | "presence";
   mapId?: string;
   origin?: string;
   payload?: any;

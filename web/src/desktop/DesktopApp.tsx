@@ -22,7 +22,10 @@ export function DesktopApp() {
 
   useEffect(() => {
     void bootstrap();
-    const ws = connectWS(applyEvent, setConnected);
+    const ws = connectWS(applyEvent, setConnected, "desktop");
+    // The store reports selection and editing through this, so presence rides
+    // the socket that is already open rather than adding requests.
+    useGraph.getState().setPresenceSender(ws.send);
     return () => ws.close();
   }, [bootstrap, applyEvent, setConnected]);
 

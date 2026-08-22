@@ -358,6 +358,33 @@ belongs rather than at the top where you would notice it.
 Anything added from a phone appears on the desktop canvas immediately, placed
 by auto-layout.
 
+## Working together
+
+Every connection is a separate participant. The server assigns a name and a
+colour on join, and everyone sees who else is here — a row of dots in the
+toolbar, and markers on the nodes themselves.
+
+**Selection is visible.** A node somebody else has selected is outlined in
+their colour, on the canvas and on the phone. Your own selection is never
+marked, since you already know where you are.
+
+**Editing takes a lock.** Opening a node's title editor claims it; a `✎` in the
+holder's colour appears on the node for everyone else, and their editor refuses
+to open. The lock is enforced by the server, not just drawn: a `PATCH` to a held
+node is refused with `409` and the holder's name, so a second tab, a stale page
+or a script cannot overwrite what somebody is typing.
+
+Locks release when the editor closes, when the edit is committed, when the
+client disconnects, and after two minutes idle — a suspended laptop keeps its
+socket open, so disconnection alone is not enough of a guarantee.
+
+Presence lives in memory only. It describes a moment rather than the map, so it
+is never written to `maps.db` and nothing survives a restart — a lock that
+outlived the server would be one nobody could release.
+
+The phone is a participant surface: it shows who is looking at what and respects
+locks, but it only ever adds replies, so it never takes a lock of its own.
+
 ## Synchronisation
 
 All writes go through the REST API so validation lives in exactly one place;

@@ -360,6 +360,17 @@ func (s *Server) handleNodeByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
+		// Refused here rather than only in the UI. An advisory lock is no lock
+		// at all: a second tab, a stale page, or a client that never learned
+		// about presence would still overwrite whatever somebody is typing.
+		if holder, ok := s.presence.CanEdit(clientID(r), id); !ok {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error": fmt.Sprintf("%s is editing this node", holder),
+				"kind":  "locked",
+				"by":    holder,
+			})
+			return
+		}
 		node, err := s.actorStore(r).UpdateNode(id, patch)
 		if err != nil {
 			writeErr(w, err)

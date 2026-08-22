@@ -28,6 +28,7 @@ type client struct {
 	conn *websocket.Conn
 	send chan []byte
 	hub  *Hub
+	srv  *Server
 	once sync.Once
 }
 
@@ -148,8 +149,16 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		conn: conn,
 		send: make(chan []byte, 64),
 		hub:  s.hub,
+		srv:  s,
 	}
 	s.hub.register <- c
+
+	// Everyone needs to know who else is in the room, and the newcomer needs
+	// the roster before it renders anything.
+	if c.id != "" {
+		s.presence.Join(c.id, r.URL.Query().Get("surface"))
+		s.broadcastPresence()
+	}
 
 	go c.writeLoop()
 	go c.readLoop()
@@ -161,22 +170,72 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// readLoop keeps the connection alive and drains client frames. The client
-// does not drive state over the socket — all writes go through the REST API,
-// which keeps validation in exactly one place — so incoming frames are only
-// pings and presence.
+// clientMessage is what a client may send over the socket.
+//
+// Deliberately only presence: every change to the map still goes through the
+// REST API, which keeps validation in exactly one place. What a person has
+// selected, by contrast, is not part of the map and should not be written to
+// it.
+type clientMessage struct {
+	Type   string   `json:"type"`
+	NodeID string   `json:"nodeId,omitempty"`
+	Nodes  []string `json:"nodes,omitempty"`
+	Name   string   `json:"name,omitempty"`
+}
+
+// readLoop keeps the connection alive and handles presence frames.
 func (c *client) readLoop() {
-	defer c.close()
+	defer func() {
+		// Leaving releases whatever this client was editing, which is what
+		// makes a server-enforced lock safe: closing the tab always frees it.
+		if c.id != "" && c.srv != nil {
+			c.srv.presence.Leave(c.id)
+			c.srv.broadcastPresence()
+		}
+		c.close()
+	}()
 	c.conn.SetReadLimit(1 << 20)
 	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
 		return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 	for {
-		if _, _, err := c.conn.ReadMessage(); err != nil {
+		_, data, err := c.conn.ReadMessage()
+		if err != nil {
 			return
 		}
+		c.handle(data)
 	}
+}
+
+// handle applies one presence frame. Anything unrecognised is ignored rather
+// than closing the connection: an older client should degrade to no presence,
+// not to no updates.
+func (c *client) handle(data []byte) {
+	if c.id == "" || c.srv == nil {
+		return
+	}
+	var msg clientMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return
+	}
+	switch msg.Type {
+	case "select":
+		c.srv.presence.Select(c.id, msg.Nodes)
+	case "editing":
+		if _, ok := c.srv.presence.Lock(c.id, msg.NodeID); !ok {
+			// Refused because somebody else holds it. The roster broadcast
+			// below tells this client who, and its editor closes.
+			break
+		}
+	case "done":
+		c.srv.presence.Unlock(c.id)
+	case "rename":
+		c.srv.presence.Rename(c.id, msg.Name)
+	default:
+		return
+	}
+	c.srv.broadcastPresence()
 }
 
 func (c *client) writeLoop() {

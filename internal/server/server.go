@@ -27,6 +27,12 @@ type Server struct {
 	mux *http.ServeMux
 	ui  fs.FS
 
+	// presence is who is connected, what they have selected and what they are
+	// holding open for editing. In memory only: it describes a moment rather
+	// than the map, and a lock that outlived the process would be one nobody
+	// could release.
+	presence *Presence
+
 	// knownVersion is the SQLite data_version this process last accounted
 	// for. See WatchExternalChanges for why it is tracked rather than a
 	// simple "did we just write?" flag.
@@ -81,6 +87,7 @@ func New(st *store.Store) (*Server, error) {
 	}
 	s := &Server{
 		st: st, hub: newHub(), ui: ui, mux: http.NewServeMux(),
+		presence:     newPresence(),
 		pollInterval: defaultPollInterval,
 		// Disabled by default so that embedding the server, and every existing
 		// test, behaves as before. The CLI turns it on.

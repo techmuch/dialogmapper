@@ -110,6 +110,21 @@
   letter-spacing: .03em;
 }
 
+/* Presence. The phone is a participant surface, so seeing that the facilitator
+   has a node open matters more here than anywhere: it is the difference
+   between "nobody is listening" and "that is being written down now". */
+.m-who {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  font-size: 8px;
+  line-height: 12px;
+  text-align: center;
+  color: #0b0f14;
+}
+.m-row.is-locked { opacity: .82; }
+.m-row.is-locked .m-reply { display: none; }
+
 .m-row__under {
   margin: 0;
   font-size: 11px;

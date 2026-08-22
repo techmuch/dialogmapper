@@ -91,6 +91,68 @@ test("something added while you are looking is marked new", async ({ page, dm })
   await expect(page.locator(".m-scope")).toContainText("new since you opened");
 });
 
+/**
+ * Search on the phone.
+ *
+ * It renders through a different branch from the feed — a flat list of matches
+ * rather than threads — and that branch had no coverage at all, so the whole
+ * search path could have broken without a single test noticing.
+ */
+test("searching shows matching nodes", async ({ page, dm }) => {
+  await page.goto(`${dm.url}/m`, { waitUntil: "networkidle" });
+
+  await page.locator(".m-search").fill("Invalidation");
+  await expect(row(page, "Invalidation is forever")).toBeVisible();
+  await expect(page.locator(".m-row")).toHaveCount(1);
+  await expect(page.locator(".m-scope")).toContainText("1 result");
+});
+
+test("search matches body text, not just titles", async ({ page, dm }) => {
+  await page.goto(`${dm.url}/m`, { waitUntil: "networkidle" });
+
+  await page.locator(".m-search").fill("nonsense-that-matches-nothing");
+  await expect(page.locator(".m-empty")).toContainText("Nothing matched");
+  await expect(page.locator(".m-row")).toHaveCount(0);
+});
+
+test("search results are flat, with no thread controls", async ({ page, dm }) => {
+  await page.goto(`${dm.url}/m`, { waitUntil: "networkidle" });
+  await expect(page.locator(".m-thread__toggle").first()).toBeVisible();
+
+  await page.locator(".m-search").fill("cache");
+  await expect(page.locator(".m-row").first()).toBeVisible();
+  // A match answers for itself; rebuilding threads around scattered hits would
+  // mostly show context nobody asked for.
+  await expect(page.locator(".m-thread__toggle")).toHaveCount(0);
+  expect(await depthOf(page, "Add a read-through cache")).toBe(0);
+});
+
+test("clearing the search restores the threaded feed", async ({ page, dm }) => {
+  await page.goto(`${dm.url}/m`, { waitUntil: "networkidle" });
+
+  await page.locator(".m-search").fill("Invalidation");
+  await expect(page.locator(".m-row")).toHaveCount(1);
+
+  await page.locator(".m-search").fill("");
+  await expect(page.locator(".m-thread__toggle").first()).toBeVisible();
+  expect(await depthOf(page, "Cuts p99 to 200ms")).toBe(2);
+});
+
+test("a search result can be replied to", async ({ page, dm }) => {
+  await page.goto(`${dm.url}/m`, { waitUntil: "networkidle" });
+
+  await page.locator(".m-search").fill("Invalidation");
+  await row(page, "Invalidation is forever").click();
+  await expect(page.locator(".m-context")).toContainText("Invalidation is forever");
+
+  await page.locator(".m-input").fill("Cache tags would help");
+  await page.locator(".m-send").click();
+
+  // Posting clears the search, so the reply is visible in its thread.
+  await expect(row(page, "Cache tags would help")).toBeVisible();
+  expect(await depthOf(page, "Cache tags would help")).toBe(3);
+});
+
 test("a reply lands under the node that was tapped", async ({ page, dm }) => {
   await page.goto(`${dm.url}/m`, { waitUntil: "networkidle" });
 

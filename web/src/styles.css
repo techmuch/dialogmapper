@@ -141,6 +141,48 @@ code { font-family: var(--mono); background: var(--bg-3); padding: 1px 5px; bord
   font-size: 11px;
 }
 
+/* --- presence ------------------------------------------------------------
+
+   Who else is here, and what they have hold of. The colour is the server's
+   per-participant assignment, passed down as --presence, so the canvas needs
+   no legend to be readable. */
+
+.node.is-watched { border-color: var(--presence); }
+.node.is-locked {
+  /* Locked is a stronger statement than watched, so it gets a solid ring and
+     a cursor that says the obvious thing before you try to type. */
+  box-shadow: 0 0 0 2px var(--presence);
+  cursor: not-allowed;
+}
+.node.is-locked .node__title { opacity: .75; }
+
+.node__presence {
+  position: absolute;
+  top: -9px;
+  right: 8px;
+  display: flex;
+  gap: 3px;
+}
+.node__who {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  font-size: 8px;
+  line-height: 10px;
+  text-align: center;
+  color: #0b0f14;
+}
+.node__who.is-editing { width: auto; min-width: 14px; padding: 0 3px; border-radius: 7px; }
+
+/* Roster in the toolbar. */
+.who { display: flex; align-items: center; gap: 4px; margin-right: 6px; }
+.who__dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.25);
+}
+.who__me { outline: 1px solid var(--fg-dim); outline-offset: 1px; }
+
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 .status-dot.is-up { background: var(--pro); }
 .status-dot.is-down { background: var(--con); animation: pulse 1.4s infinite; }

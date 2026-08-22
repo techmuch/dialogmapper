@@ -1,5 +1,6 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { CLIENT_ID } from "../api";
 import { useGraph } from "../store/useGraph";
 import { NODE_GLYPHS, NODE_LABELS, type DMNode } from "../types";
 
@@ -19,6 +20,24 @@ export interface NodeCardData extends Record<string, unknown> {
 function NodeCardImpl({ data, selected }: NodeProps) {
   const { node, dimmed } = data as unknown as NodeCardData;
   const editing = useGraph((s) => s.editingId === node.id);
+  // Selected as a whole, then filtered outside the selector.
+  //
+  // Filtering *inside* the selector returns a fresh array on every store read,
+  // which Zustand compares by identity — so the component re-rendered forever
+  // and the canvas never painted at all. The array has to be derived after the
+  // subscription, not during it.
+  const participants = useGraph((s) => s.participants);
+  const watchers = useMemo(
+    () =>
+      participants.filter(
+        (p) => p.id !== CLIENT_ID && (p.selected?.includes(node.id) || p.editing === node.id),
+      ),
+    [participants, node.id],
+  );
+  const lockedBy = useMemo(
+    () => participants.find((p) => p.editing === node.id && p.id !== CLIENT_ID) ?? null,
+    [participants, node.id],
+  );
   const commitTitle = useGraph((s) => s.commitTitle);
   const cancelEdit = useGraph((s) => s.cancelEdit);
 
@@ -67,11 +86,40 @@ function NodeCardImpl({ data, selected }: NodeProps) {
         dimmed ? "is-dimmed" : "",
         status === "resolved" ? "is-resolved" : "",
         status === "rejected" ? "is-rejected" : "",
+        watchers.length > 0 ? "is-watched" : "",
+        lockedBy ? "is-locked" : "",
       ]
         .filter(Boolean)
         .join(" ")}
+      // The holder's colour, so who has what is readable at a glance rather
+      // than requiring a legend. Falls back to the first watcher when nobody
+      // is editing.
+      style={
+        watchers.length > 0
+          ? ({ "--presence": (lockedBy ?? watchers[0]).color } as React.CSSProperties)
+          : undefined
+      }
       data-testid={`node-${node.id}`}
+      data-locked-by={lockedBy?.name}
     >
+      {watchers.length > 0 && (
+        <div className="node__presence" aria-hidden>
+          {watchers.map((p) => (
+            <span
+              key={p.id}
+              className={`node__who ${p.editing === node.id ? "is-editing" : ""}`}
+              style={{ background: p.color }}
+              title={
+                p.editing === node.id
+                  ? `${p.name} is editing this`
+                  : `${p.name} has this selected`
+              }
+            >
+              {p.editing === node.id ? "\u270e" : ""}
+            </span>
+          ))}
+        </div>
+      )}
       {/* Both handles sit on every node; the IBIS grammar, not the UI, decides
           whether a dragged connection is legal.
 

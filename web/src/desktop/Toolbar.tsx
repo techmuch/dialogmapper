@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api";
+import { CLIENT_ID, api } from "../api";
 import { useGraph } from "../store/useGraph";
 import { ALL_STATUSES, isFilterActive, useUI, type FilterPreset } from "../store/useUI";
 
@@ -21,6 +21,33 @@ const PRESETS: { key: FilterPreset; label: string; hint: string }[] = [
     hint: "Questions with no answer marked resolved, and everything under them",
   },
 ];
+
+/**
+ * Who else is in this project.
+ *
+ * A row of dots rather than names: on a busy toolbar the colour is what makes
+ * the node markers legible, and the name is one hover away.
+ */
+function Roster() {
+  const participants = useGraph((s) => s.participants);
+  if (participants.length < 2) return null;
+  return (
+    <span className="who" title="Everyone connected to this project">
+      {participants.map((p) => (
+        <span
+          key={p.id}
+          className={`who__dot ${p.id === CLIENT_ID ? "who__me" : ""}`}
+          style={{ background: p.color }}
+          title={
+            `${p.name}${p.id === CLIENT_ID ? " (you)" : ""}` +
+            (p.surface === "mobile" ? " — on a phone" : "") +
+            (p.editing ? " — editing" : "")
+          }
+        />
+      ))}
+    </span>
+  );
+}
 
 export function Toolbar() {
   const maps = useGraph((s) => s.maps);
@@ -68,6 +95,7 @@ export function Toolbar() {
         )}
 
         <span className="toolbar__count">{nodeCount} nodes</span>
+        <Roster />
       </div>
 
       <div className="toolbar__center">
