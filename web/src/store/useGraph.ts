@@ -175,6 +175,7 @@ export const useGraph = create<GraphState>((set, get) => ({
         loading: false,
         selectedId: null,
       });
+      get().presence?.({ type: "viewing", mapId });
       // Nodes created blind — by an agent, a phone, or the CLI — arrive with
       // no coordinates. Place them before first paint so the canvas never
       // shows a pile at the origin.
@@ -225,7 +226,7 @@ export const useGraph = create<GraphState>((set, get) => ({
 
   select: (id) => {
     set({ selectedId: id, multiSelected: new Set(), editingId: null });
-    get().presence?.({ type: "select", nodes: id ? [id] : [] });
+    get().presence?.({ type: "select", nodes: id ? [id] : [], mapId: get().mapId ?? undefined });
     // Selecting elsewhere means the previous editor is closed, so the lock it
     // held has to go with it — otherwise clicking away would leave a node
     // locked against everybody until this tab closed.
@@ -238,7 +239,7 @@ export const useGraph = create<GraphState>((set, get) => ({
       multiSelected: new Set(ids.slice(1)),
       editingId: null,
     });
-    get().presence?.({ type: "select", nodes: ids });
+    get().presence?.({ type: "select", nodes: ids, mapId: get().mapId ?? undefined });
     get().presence?.({ type: "done" });
   },
 
@@ -281,7 +282,7 @@ export const useGraph = create<GraphState>((set, get) => ({
       return;
     }
     set({ selectedId: id, editingId: id });
-    get().presence?.({ type: "select", nodes: [id] });
+    get().presence?.({ type: "select", nodes: [id], mapId: get().mapId ?? undefined });
     get().presence?.({ type: "editing", nodeId: id });
   },
 

@@ -16,7 +16,8 @@ type Handler = (e: ServerEvent) => void;
 
 /** What this tab tells the server about itself. */
 export type PresenceMessage =
-  | { type: "select"; nodes: string[] }
+  | { type: "select"; nodes: string[]; mapId?: string }
+  | { type: "viewing"; mapId: string }
   | { type: "editing"; nodeId: string }
   | { type: "done" }
   | { type: "rename"; name: string };

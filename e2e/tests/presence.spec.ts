@@ -26,6 +26,10 @@ async function phone(browser: Browser, dm: DialogMapper): Promise<Page> {
   const ctx = await browser.newContext({ ...devices["Pixel 7"] });
   const page = await ctx.newPage();
   await page.goto(`${dm.url}/m`, { waitUntil: "networkidle" });
+  // `networkidle` says the document loaded, not that the app rendered or that
+  // its socket joined. Waiting for a row is the cheap proxy for both, and
+  // without it these tests are a race under parallel workers.
+  await page.locator(".m-row").first().waitFor();
   return page;
 }
 

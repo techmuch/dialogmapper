@@ -125,6 +125,8 @@ export interface Participant {
   /** The one node this participant is holding open; nobody else may edit it. */
   editing?: string;
   surface?: "desktop" | "mobile";
+  /** The map they have open, so following can switch to it. */
+  mapId?: string;
 }
 
 /** Server-sent state changes. Payload shape varies by type. */

@@ -410,6 +410,15 @@ selected, at your zoom rather than theirs. **Double-click to follow**, and it
 keeps up as they move — including a phone tapping rows, since a tap is that
 surface's selection.
 
+**The phone can follow too.** The People button in its header opens a list of
+who is here; tap somebody to follow them. With no viewport to move, following
+on a phone scrolls their node into view and marks it. Tapping a row yourself
+ends it, as does the banner or the sheet.
+
+**Following crosses maps.** Presence carries which map each person has open, so
+following somebody who switches maps takes you with them. Without that the jump
+failed silently: the node id was real but not on the map you were looking at.
+
 Following ends when you click a node or the canvas, press `Esc`, click the dot
 again, or they disconnect. Panning and zooming do not end it, so you can look
 around and still be carried along when they move next. A banner names who you

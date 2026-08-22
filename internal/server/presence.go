@@ -33,6 +33,10 @@ type Participant struct {
 	// Surface is "desktop" or "mobile", so the canvas can say where somebody
 	// is rather than just that they exist.
 	Surface string `json:"surface,omitempty"`
+	// MapID is the map they currently have open. Without it, following
+	// somebody who moves to another map fails silently: the node id is real
+	// but not on your canvas, so the jump simply does nothing.
+	MapID string `json:"mapId,omitempty"`
 }
 
 // Colours are picked to stay distinguishable against the dark canvas and from
@@ -88,12 +92,27 @@ func (p *Presence) Leave(id string) {
 	delete(p.byID, id)
 }
 
-// Select records what a client has selected.
-func (p *Presence) Select(id string, nodeIDs []string) {
+// Select records what a client has selected, and which map it is on.
+//
+// The map travels with the selection because the two are only meaningful
+// together: a node id says nothing about where to look for it.
+func (p *Presence) Select(id string, nodeIDs []string, mapID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if st, ok := p.byID[id]; ok {
 		st.Selected = nodeIDs
+		if mapID != "" {
+			st.MapID = mapID
+		}
+	}
+}
+
+// Viewing records which map a client has open, with no selection.
+func (p *Presence) Viewing(id, mapID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if st, ok := p.byID[id]; ok && mapID != "" {
+		st.MapID = mapID
 	}
 }
 

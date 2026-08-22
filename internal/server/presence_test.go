@@ -149,11 +149,37 @@ func TestStaleLockExpires(t *testing.T) {
 func TestSelectionIsReported(t *testing.T) {
 	p := newPresence()
 	p.Join("a", "desktop")
-	p.Select("a", []string{"node-1", "node-2"})
+	p.Select("a", []string{"node-1", "node-2"}, "map-1")
 
 	everyone := p.Everyone()
 	if len(everyone) != 1 || len(everyone[0].Selected) != 2 {
 		t.Fatalf("selection not recorded: %+v", everyone)
+	}
+	// The map travels with the selection: a node id says nothing about where to
+	// look for it, so following somebody who moved maps would fail silently.
+	if everyone[0].MapID != "map-1" {
+		t.Errorf("map not recorded: %+v", everyone[0])
+	}
+}
+
+func TestViewingRecordsTheMapWithNoSelection(t *testing.T) {
+	p := newPresence()
+	p.Join("a", "desktop")
+	p.Viewing("a", "map-2")
+	if got := p.Everyone()[0].MapID; got != "map-2" {
+		t.Errorf("map = %q, want map-2", got)
+	}
+}
+
+func TestSelectKeepsTheKnownMapWhenNoneIsGiven(t *testing.T) {
+	// An older client sends no map. Forgetting the one we already knew would
+	// be worse than keeping it.
+	p := newPresence()
+	p.Join("a", "desktop")
+	p.Viewing("a", "map-1")
+	p.Select("a", []string{"node-1"}, "")
+	if got := p.Everyone()[0].MapID; got != "map-1" {
+		t.Errorf("map = %q; a selection with no map should not erase it", got)
 	}
 }
 

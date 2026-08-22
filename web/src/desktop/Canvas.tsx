@@ -308,6 +308,8 @@ function CanvasInner() {
     () => participants.find((p) => p.id === following) ?? null,
     [participants, following],
   );
+  const mapId = useGraph((s) => s.mapId);
+  const openMap = useGraph((s) => s.openMap);
   useEffect(() => {
     if (!following) return;
     // The person left: nothing to follow, and staying in the mode would leave
@@ -316,9 +318,16 @@ function CanvasInner() {
       useUI.getState().setFollowing(null);
       return;
     }
+    // Following somebody who moved to another map used to fail silently: the
+    // node id was real but not on this canvas, so the jump quietly did
+    // nothing. Switching first is what "following" has to mean.
+    if (followed.mapId && followed.mapId !== mapId) {
+      void openMap(followed.mapId);
+      return;
+    }
     const target = followed.editing || followed.selected?.[0];
     if (target) centreOn(target);
-  }, [following, followed, centreOn]);
+  }, [following, followed, centreOn, mapId, openMap]);
 
   const rfEdges = useMemo<RFEdge[]>(
     () =>

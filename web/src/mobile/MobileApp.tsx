@@ -48,7 +48,10 @@ export function MobileApp() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [live, setLive] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [following, setFollowing] = useState<string | null>(null);
   const wsRef = useRef<WSClient | null>(null);
+  const feedRef = useRef<HTMLElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -105,6 +108,7 @@ export function MobileApp() {
     // would mark an entire unseen map as new.
     seen.current = null;
     setCollapsed(new Set());
+    wsRef.current?.send({ type: "viewing", mapId });
     void refresh(mapId);
   }, [mapId, refresh]);
 
@@ -157,6 +161,40 @@ export function MobileApp() {
     [nodes, edges, grammar],
   );
 
+  const followed = participants.find((p) => p.id === following) ?? null;
+
+  /**
+   * Following, on a surface with no viewport to move.
+   *
+   * The phone shows a list, so "go to their node" means scrolling that row
+   * into view and marking it. Their map is switched to first, for the same
+   * reason the canvas does: a node id says nothing about where to find it.
+   */
+  useEffect(() => {
+    if (!following) return;
+    if (!followed) {
+      setFollowing(null);
+      return;
+    }
+    if (followed.mapId && followed.mapId !== mapId) {
+      setMapId(followed.mapId);
+      return;
+    }
+    const target = followed.editing || followed.selected?.[0];
+    if (!target) return;
+    // Search results are a different list; drop back to the feed so the row
+    // being followed is actually on screen.
+    setQuery("");
+    setResults(null);
+    // The row may be inside a collapsed thread, and scrolling to something
+    // that is not rendered does nothing at all.
+    setCollapsed(new Set());
+    const el = feedRef.current?.querySelector(`[data-node="${target}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [following, followed, mapId]);
+
+  const followedNode = followed ? followed.editing || followed.selected?.[0] : undefined;
+
   const isNew = (n: DMNode) => seen.current !== null && !seen.current.has(n.id);
   const newCount = nodes.filter(isNew).length;
 
@@ -172,7 +210,23 @@ export function MobileApp() {
       <header className="m-head">
         <div className="m-head__row">
           <span className="m-brand">◇ dialogmapper</span>
-          <span className={`m-dot ${live ? "is-up" : "is-down"}`} title={live ? "Live" : "Offline"} />
+          <span className="m-head__right">
+            {participants.length > 1 && (
+              <button
+                className={`m-people ${following ? "is-following" : ""}`}
+                onClick={() => setPeopleOpen(true)}
+              >
+                {participants
+                  .filter((p) => p.id !== CLIENT_ID)
+                  .slice(0, 3)
+                  .map((p) => (
+                    <span key={p.id} className="m-who" style={{ background: p.color }} />
+                  ))}
+                <span>{following ? "Following" : "People"}</span>
+              </button>
+            )}
+            <span className={`m-dot ${live ? "is-up" : "is-down"}`} title={live ? "Live" : "Offline"} />
+          </span>
         </div>
         <select
           className="m-mapsel"
@@ -204,7 +258,14 @@ export function MobileApp() {
         </div>
       )}
 
-      <main className="m-feed">
+      {following && followed && (
+        <button className="m-following" onClick={() => setFollowing(null)}>
+          <span className="m-who" style={{ background: followed.color }} />
+          Following {followed.name} · tap to stop
+        </button>
+      )}
+
+      <main className="m-feed" ref={feedRef}>
         {loading && <p className="m-empty">Loading…</p>}
         {!loading && !results && threads.length === 0 && (
           <p className="m-empty">Nothing here yet. Add the first question below.</p>
@@ -226,7 +287,8 @@ export function MobileApp() {
                 isNew={false}
                 onReply={() => {
                   setReplyTo(n);
-                  wsRef.current?.send({ type: "select", nodes: [n.id] });
+                  setFollowing(null);
+                  wsRef.current?.send({ type: "select", nodes: [n.id], mapId: mapId ?? undefined });
                 }}
               />
             ))}
@@ -243,18 +305,29 @@ export function MobileApp() {
                 key={t.root.id}
                 thread={t}
                 participants={participants}
+                followedNode={followedNode}
                 collapsed={collapsed.has(t.root.id)}
                 onToggle={() => toggleThread(t.root.id)}
                 isNew={isNew}
                 onReply={(n) => {
                   setReplyTo(n);
-                  wsRef.current?.send({ type: "select", nodes: [n.id] });
+                  setFollowing(null);
+                  wsRef.current?.send({ type: "select", nodes: [n.id], mapId: mapId ?? undefined });
                 }}
               />
             ))}
           </>
         )}
       </main>
+
+      {peopleOpen && (
+        <PeopleSheet
+          participants={participants}
+          following={following}
+          onFollow={(id) => setFollowing(id)}
+          onClose={() => setPeopleOpen(false)}
+        />
+      )}
 
       {mapId && (
         <Composer
@@ -278,6 +351,61 @@ export function MobileApp() {
 }
 
 /**
+ * Who else is here, and who this phone is following.
+ *
+ * A sheet rather than a row of dots: a phone has no hover, so the name and what
+ * each person is looking at have to be on screen to be usable at all.
+ */
+function PeopleSheet({
+  participants,
+  following,
+  onFollow,
+  onClose,
+}: {
+  participants: Participant[];
+  following: string | null;
+  onFollow: (id: string | null) => void;
+  onClose: () => void;
+}) {
+  const others = participants.filter((p) => p.id !== CLIENT_ID);
+  return (
+    <div className="m-sheet-backdrop" onClick={onClose}>
+      <div className="m-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>Who is here</h2>
+        {others.length === 0 && <p className="m-empty">Nobody else right now.</p>}
+        {others.map((p) => {
+          const isFollowed = following === p.id;
+          return (
+            <button
+              key={p.id}
+              className={`m-person ${isFollowed ? "is-following" : ""}`}
+              data-participant={p.id}
+              onClick={() => {
+                onFollow(isFollowed ? null : p.id);
+                onClose();
+              }}
+            >
+              <span className="m-who" style={{ background: p.color }} />
+              <span className="m-person__name">
+                {p.name}
+                <small>
+                  {p.surface === "mobile" ? "on a phone" : "on the canvas"}
+                  {p.editing ? " · editing" : ""}
+                </small>
+              </span>
+              <span className="m-person__action">{isFollowed ? "Stop" : "Follow"}</span>
+            </button>
+          );
+        })}
+        <button className="m-sheet__close" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * One thread: a root node and everything beneath it.
  *
  * Collapsing is per-thread rather than per-node. On a phone, opening and
@@ -287,6 +415,7 @@ export function MobileApp() {
 function ThreadBlock({
   thread,
   participants,
+  followedNode,
   collapsed,
   onToggle,
   isNew,
@@ -294,6 +423,7 @@ function ThreadBlock({
 }: {
   thread: Thread;
   participants: Participant[];
+  followedNode?: string;
   collapsed: boolean;
   onToggle: () => void;
   isNew: (n: DMNode) => boolean;
@@ -312,6 +442,7 @@ function ThreadBlock({
       <Row
         row={root}
         participants={participants}
+        followedNode={followedNode}
         isNew={isNew(root.node)}
         onReply={() => onReply(root.node)}
       />
@@ -328,6 +459,7 @@ function ThreadBlock({
             key={r.node.id}
             row={r}
             participants={participants}
+            followedNode={followedNode}
             isNew={isNew(r.node)}
             onReply={() => onReply(r.node)}
           />
@@ -339,11 +471,13 @@ function ThreadBlock({
 function Row({
   row,
   participants = [],
+  followedNode,
   isNew,
   onReply,
 }: {
   row: ThreadRow;
   participants?: Participant[];
+  followedNode?: string;
   isNew: boolean;
   onReply: () => void;
 }) {
@@ -357,8 +491,9 @@ function Row({
     <article
       className={`m-row m-row--${node.type} ${isNew ? "is-new" : ""} ${
         locked ? "is-locked" : ""
-      }`}
+      } ${followedNode === node.id ? "is-followed" : ""}`}
       data-depth={row.depth}
+      data-node={node.id}
       style={{ marginLeft: `${indent * 14}px` }}
       onClick={onReply}
     >

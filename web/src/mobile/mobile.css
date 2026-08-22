@@ -215,3 +215,92 @@
   font-weight: 600;
 }
 .m-send:disabled { opacity: .4; }
+
+/* --- who is here ---------------------------------------------------------
+
+   The phone has no hover, so presence has to be legible without one: a button
+   in the header, and a sheet that spells out who is where. */
+
+.m-head__right { display: flex; align-items: center; gap: 8px; }
+
+.m-people {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  min-height: 30px;
+}
+.m-people.is-following { border-color: var(--accent); color: var(--fg); }
+
+.m-following {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 12px;
+  background: rgba(122, 162, 247, .12);
+  border: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.m-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .55);
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+}
+.m-sheet {
+  width: 100%;
+  background: var(--bg-2);
+  border-top: 1px solid var(--line);
+  border-radius: 14px 14px 0 0;
+  padding: 14px 12px calc(14px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.m-sheet h2 { margin: 0 0 4px; font-size: 15px; }
+
+.m-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  /* A phone target: 44px is the smallest thing a thumb hits reliably. */
+  min-height: 48px;
+  padding: 8px 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--fg);
+  text-align: left;
+}
+.m-person.is-following { border-color: var(--accent); }
+.m-person__name { display: flex; flex-direction: column; flex: 1; font-size: 14px; }
+.m-person__name small { color: var(--fg-dim); font-size: 11px; }
+.m-person__action { color: var(--accent); font-size: 13px; }
+
+.m-sheet__close {
+  min-height: 44px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--fg-dim);
+  margin-top: 4px;
+}
+
+/* The row you are being pointed at while following. Scrolling alone is not
+   enough to say "this one" on a list of near-identical cards. */
+.m-row.is-followed {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}

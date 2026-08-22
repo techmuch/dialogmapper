@@ -181,6 +181,7 @@ type clientMessage struct {
 	NodeID string   `json:"nodeId,omitempty"`
 	Nodes  []string `json:"nodes,omitempty"`
 	Name   string   `json:"name,omitempty"`
+	MapID  string   `json:"mapId,omitempty"`
 }
 
 // readLoop keeps the connection alive and handles presence frames.
@@ -221,7 +222,9 @@ func (c *client) handle(data []byte) {
 	}
 	switch msg.Type {
 	case "select":
-		c.srv.presence.Select(c.id, msg.Nodes)
+		c.srv.presence.Select(c.id, msg.Nodes, msg.MapID)
+	case "viewing":
+		c.srv.presence.Viewing(c.id, msg.MapID)
 	case "editing":
 		if _, ok := c.srv.presence.Lock(c.id, msg.NodeID); !ok {
 			// Refused because somebody else holds it. The roster broadcast
