@@ -1,0 +1,468 @@
+{
+  "version": "dialogmapper version v0.1.16",
+  "commands": [
+    {
+      "name": "apply",
+      "summary": "Apply JSON mutations to a project",
+      "blurb": "Reads a JSON array of operations from stdin and applies them in order.",
+      "flags": [
+        {
+          "flag": "--dry-run",
+          "arg": "",
+          "summary": "validate the operations without writing anything"
+        },
+        {
+          "flag": "--file",
+          "arg": "string",
+          "summary": "read operations from a file instead of stdin"
+        },
+        {
+          "flag": "--json",
+          "arg": "",
+          "summary": "report the outcome as JSON"
+        },
+        {
+          "flag": "--schema",
+          "arg": "",
+          "summary": "print the operation contract as JSON and exit"
+        }
+      ],
+      "subcommands": []
+    },
+    {
+      "name": "completion",
+      "summary": "Generate the autocompletion script for the specified shell",
+      "blurb": "Generate the autocompletion script for dialogmapper for the specified shell.\nSee each sub-command's help for details on how to use the generated script.",
+      "flags": [],
+      "subcommands": [
+        {
+          "name": "bash",
+          "summary": "Generate the autocompletion script for bash",
+          "flags": [
+            {
+              "flag": "--no-descriptions",
+              "arg": "",
+              "summary": "disable completion descriptions"
+            }
+          ]
+        },
+        {
+          "name": "fish",
+          "summary": "Generate the autocompletion script for fish",
+          "flags": [
+            {
+              "flag": "--no-descriptions",
+              "arg": "",
+              "summary": "disable completion descriptions"
+            }
+          ]
+        },
+        {
+          "name": "powershell",
+          "summary": "Generate the autocompletion script for powershell",
+          "flags": [
+            {
+              "flag": "--no-descriptions",
+              "arg": "",
+              "summary": "disable completion descriptions"
+            }
+          ]
+        },
+        {
+          "name": "zsh",
+          "summary": "Generate the autocompletion script for zsh",
+          "flags": [
+            {
+              "flag": "--no-descriptions",
+              "arg": "",
+              "summary": "disable completion descriptions"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "edge",
+      "summary": "Link and unlink nodes",
+      "blurb": "Link and unlink nodes",
+      "flags": [],
+      "subcommands": [
+        {
+          "name": "add",
+          "summary": "Link two nodes",
+          "flags": [
+            {
+              "flag": "--map",
+              "arg": "string",
+              "summary": "map name or id (optional when the project has one map)"
+            },
+            {
+              "flag": "--rel",
+              "arg": "string",
+              "summary": "responds_to, questions, supports, objects_to, relates_to or specializes"
+            }
+          ]
+        },
+        {
+          "name": "rm",
+          "summary": "Remove a link",
+          "flags": []
+        }
+      ]
+    },
+    {
+      "name": "export",
+      "summary": "Dump a map as Markdown or JSON-LD",
+      "blurb": "Traverses the map along IBIS relationships and writes it out for\ndownstream processing — the post-computation half of the AI loop.",
+      "flags": [
+        {
+          "flag": "--all",
+          "arg": "",
+          "summary": "export every map"
+        },
+        {
+          "flag": "--format",
+          "arg": "string",
+          "summary": "output format: md or json (default \"md\")"
+        },
+        {
+          "flag": "--map-id",
+          "arg": "string",
+          "summary": "map to export (defaults to the most recent)"
+        },
+        {
+          "flag": "--out",
+          "arg": "string",
+          "summary": "write to a file instead of stdout"
+        }
+      ],
+      "subcommands": []
+    },
+    {
+      "name": "grammar",
+      "summary": "Print the IBIS edge rules this binary enforces",
+      "blurb": "Prints the legal node types and relationships. Point an AI agent at\n`dialogmapper grammar --json` so it can construct valid edges instead\nof guessing and retrying.",
+      "flags": [
+        {
+          "flag": "--json",
+          "arg": "",
+          "summary": "emit machine-readable JSON"
+        }
+      ],
+      "subcommands": []
+    },
+    {
+      "name": "help",
+      "summary": "Help about any command",
+      "blurb": "Help provides help for any command in the application.\nSimply type dialogmapper help [path to command] for full details.",
+      "flags": [],
+      "subcommands": []
+    },
+    {
+      "name": "init",
+      "summary": "Initialize a dialogmapper project in the current directory",
+      "blurb": "Creates maps.db, an .assets directory for local images, and starter\nAGENTS.md and README.md files.",
+      "flags": [
+        {
+          "flag": "--force",
+          "arg": "",
+          "summary": "rewrite the generated AGENTS.md and README.md; never touches your maps"
+        },
+        {
+          "flag": "--map",
+          "arg": "string",
+          "summary": "name of the first map (default \"Untitled Map\")"
+        }
+      ],
+      "subcommands": []
+    },
+    {
+      "name": "map",
+      "summary": "List, create and delete maps",
+      "blurb": "List, create and delete maps",
+      "flags": [],
+      "subcommands": [
+        {
+          "name": "clear",
+          "summary": "Remove every node from a map, keeping the map",
+          "flags": [
+            {
+              "flag": "--yes",
+              "arg": "",
+              "summary": "do not ask"
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "summary": "List the maps in this project",
+          "flags": [
+            {
+              "flag": "--json",
+              "arg": "",
+              "summary": "print as JSON"
+            }
+          ]
+        },
+        {
+          "name": "new",
+          "summary": "Create a map",
+          "flags": [
+            {
+              "flag": "--description",
+              "arg": "string",
+              "summary": "what this map is about"
+            }
+          ]
+        },
+        {
+          "name": "rm",
+          "summary": "Delete a map",
+          "flags": [
+            {
+              "flag": "--yes",
+              "arg": "",
+              "summary": "do not ask"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "node",
+      "summary": "Add, edit and remove nodes",
+      "blurb": "Add, edit and remove nodes",
+      "flags": [],
+      "subcommands": [
+        {
+          "name": "add",
+          "summary": "Add a node, optionally attached to an existing one",
+          "flags": [
+            {
+              "flag": "--body",
+              "arg": "string",
+              "summary": "markdown body"
+            },
+            {
+              "flag": "--link",
+              "arg": "stringArray",
+              "summary": "url or \"url|title\", repeatable"
+            },
+            {
+              "flag": "--map",
+              "arg": "string",
+              "summary": "map name or id (optional when the project has one map)"
+            },
+            {
+              "flag": "--parent",
+              "arg": "string",
+              "summary": "id of the node to attach to"
+            },
+            {
+              "flag": "--rel",
+              "arg": "string",
+              "summary": "relationship to the parent; inferred when omitted"
+            },
+            {
+              "flag": "--status",
+              "arg": "string",
+              "summary": "open, resolved, rejected or parked"
+            },
+            {
+              "flag": "--tag",
+              "arg": "stringArray",
+              "summary": "tag, repeatable"
+            },
+            {
+              "flag": "--title",
+              "arg": "string",
+              "summary": "the node's title"
+            },
+            {
+              "flag": "--type",
+              "arg": "string",
+              "summary": "question, idea, pro, con, note or map"
+            }
+          ]
+        },
+        {
+          "name": "edit",
+          "summary": "Change a node's fields",
+          "flags": [
+            {
+              "flag": "--body",
+              "arg": "string",
+              "summary": "new markdown body"
+            },
+            {
+              "flag": "--link",
+              "arg": "stringArray",
+              "summary": "replace the links, repeatable"
+            },
+            {
+              "flag": "--status",
+              "arg": "string",
+              "summary": "open, resolved, rejected or parked"
+            },
+            {
+              "flag": "--tag",
+              "arg": "stringArray",
+              "summary": "replace the tags, repeatable"
+            },
+            {
+              "flag": "--title",
+              "arg": "string",
+              "summary": "new title"
+            },
+            {
+              "flag": "--type",
+              "arg": "string",
+              "summary": "change the node's type; its links are relabelled to match"
+            }
+          ]
+        },
+        {
+          "name": "rm",
+          "summary": "Delete a node everywhere, or remove it from one map",
+          "flags": [
+            {
+              "flag": "--map",
+              "arg": "string",
+              "summary": "remove from this map only, keeping the node elsewhere"
+            },
+            {
+              "flag": "--yes",
+              "arg": "",
+              "summary": "do not ask"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "redo",
+      "summary": "Reapply the last change undone from the command line",
+      "blurb": "Reapply the last change undone from the command line",
+      "flags": [
+        {
+          "flag": "--map-id",
+          "arg": "string",
+          "summary": "restrict to one map"
+        },
+        {
+          "flag": "--steps",
+          "arg": "int",
+          "summary": "how many actions to reapply (default 1)"
+        }
+      ],
+      "subcommands": []
+    },
+    {
+      "name": "seed",
+      "summary": "Scaffold a map from a research document",
+      "blurb": "Reads a markdown or text file and populates the database with IBIS\nscaffolding, so a deliberation can start from existing material instead of a\nblank canvas.",
+      "flags": [
+        {
+          "flag": "--context",
+          "arg": "string",
+          "summary": "markdown or text file to scaffold from, or - for stdin"
+        },
+        {
+          "flag": "--dry-run",
+          "arg": "",
+          "summary": "print the planned structure without writing"
+        },
+        {
+          "flag": "--map",
+          "arg": "string",
+          "summary": "name for the map to create (defaults to the file name)"
+        },
+        {
+          "flag": "--map-id",
+          "arg": "string",
+          "summary": "seed into an existing map instead of creating one"
+        }
+      ],
+      "subcommands": []
+    },
+    {
+      "name": "start",
+      "summary": "Serve the dialog mapping UI on localhost",
+      "blurb": "Starts the local HTTP and WebSocket server and serves the embedded\nfrontend. Desktop browsers get the canvas; phones get a linear capture view.",
+      "flags": [
+        {
+          "flag": "--host",
+          "arg": "string",
+          "summary": "interface to bind; use 127.0.0.1 to keep the map to this machine only (default \"0.0.0.0\")"
+        },
+        {
+          "flag": "--no-qr",
+          "arg": "",
+          "summary": "do not print the QR code on startup"
+        },
+        {
+          "flag": "--no-token",
+          "arg": "",
+          "summary": "serve to the network without an access key (anyone who can reach the port can edit)"
+        },
+        {
+          "flag": "--no-update-check",
+          "arg": "",
+          "summary": "do not contact github.com to look for a newer release"
+        },
+        {
+          "flag": "--open",
+          "arg": "",
+          "summary": "open the map in your default browser"
+        },
+        {
+          "flag": "--port",
+          "arg": "int",
+          "summary": "port to listen on (0 picks a free one) (default 7373)"
+        }
+      ],
+      "subcommands": []
+    },
+    {
+      "name": "undo",
+      "summary": "Reverse the last change made from the command line",
+      "blurb": "Reverses changes recorded under the CLI's own undo history — most\nusefully, an entire `dialogmapper seed` run.",
+      "flags": [
+        {
+          "flag": "--dry-run",
+          "arg": "",
+          "summary": "show what would be undone"
+        },
+        {
+          "flag": "--map-id",
+          "arg": "string",
+          "summary": "restrict to one map"
+        },
+        {
+          "flag": "--steps",
+          "arg": "int",
+          "summary": "how many actions to reverse (default 1)"
+        }
+      ],
+      "subcommands": []
+    },
+    {
+      "name": "upgrade",
+      "summary": "Replace this binary with the latest release",
+      "blurb": "Downloads the published build for this platform and replaces the running\nbinary with it. No Go toolchain required.",
+      "flags": [
+        {
+          "flag": "--check",
+          "arg": "",
+          "summary": "report what would be installed and stop"
+        },
+        {
+          "flag": "--yes",
+          "arg": "",
+          "summary": "do not ask before replacing the binary"
+        }
+      ],
+      "subcommands": []
+    }
+  ]
+}

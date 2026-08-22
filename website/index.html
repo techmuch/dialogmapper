@@ -3,21 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>dialogmapper — Local-First IBIS Dialog Mapping Environment</title>
-    <meta name="description" content="A single-binary, local-first IBIS dialog mapping environment for modeling wicked problems with Go, SQLite, and an embedded React graph canvas." />
-    
-    <!-- Open Graph / Social Media -->
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="color-scheme" content="dark" />
+
+    <title>dialogmapper — keep the argument, not just the decision</title>
+    <meta
+      name="description"
+      content="Turn a live discussion into a map of the question, the options and the trade-offs. A single binary that runs on your own machine — no account, no server, no upload."
+    />
+
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="dialogmapper — Local-First IBIS Dialog Mapping" />
-    <meta property="og:description" content="Model wicked problems as structured Issue-Based Information Systems (IBIS). Single binary, local-first, zero cloud dependencies." />
-    
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta property="og:title" content="dialogmapper — keep the argument, not just the decision" />
+    <meta
+      property="og:description"
+      content="Dialogue mapping for real decisions: capture the question, the options and the arguments while people are still talking. Runs locally, one file, nothing to sign up for."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="max-width: 40rem; margin: 4rem auto; padding: 0 1.25rem; font-family: system-ui">
+        <h1>dialogmapper</h1>
+        <p>
+          This site needs JavaScript to render. The tool itself does not need this site —
+          everything here is also in the
+          <a href="https://github.com/techmuch/dialogmapper">repository README</a>, and the
+          binaries are on the
+          <a href="https://github.com/techmuch/dialogmapper/releases/latest">releases page</a>.
+        </p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

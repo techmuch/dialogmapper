@@ -38,6 +38,15 @@ jobs:
           npm ci || npm install
           npm run build
 
+      # Loads every route in a real browser. A broken image or a link to a
+      # renamed guide does not fail a build — it just ships, and nobody notices
+      # until a reader hits it.
+      - name: Check the built site
+        run: |
+          cd website
+          npx playwright install --with-deps chromium
+          npm run check
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
