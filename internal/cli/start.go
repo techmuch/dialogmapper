@@ -98,6 +98,7 @@ process writing to the same database — is broadcast to all connected clients.`
 			}
 
 			out := cmd.OutOrStdout()
+			fmt.Fprint(out, banner(buildVersion, isTerminal(out)))
 			fmt.Fprintf(out, "dialogmapper serving %s\n", st.Root())
 			fmt.Fprintf(out, "  → %s\n", localURL)
 
