@@ -80,7 +80,10 @@ export function Ibis() {
           </p>
           <p>
             <Chip type="note" /> — context, evidence, a link, a constraint. Anything true
-            that is not itself a position.
+            that is not itself a position. A Note is the one type that attaches to{" "}
+            <em>anything</em>: a question, an option, an argument, or another note. That is
+            the point of it — "the lease ends in March" belongs somewhere in the argument
+            without being a move in it.
           </p>
 
           <h2>Why it is enforced</h2>

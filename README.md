@@ -74,7 +74,7 @@ needs a mouse correction afterwards.
 
 | Key | Action |
 |-----|--------|
-| `n` | New Note — or an Idea, when a Question is selected |
+| `n` | New Note on the selection — a Note attaches to anything |
 | `q` | New Question about the selection |
 | `i` | New Idea answering the selected Question |
 | `+` / `-` | New Pro / Con on the selected Idea |
@@ -92,6 +92,13 @@ needs a mouse correction afterwards.
 `+` and `-` are forgiving: with a Question selected they attach to that
 Question's most recent Idea rather than failing, because a grammar error
 mid-sentence costs more than a sensible guess.
+
+`n` is the one key that never has to guess, because a **Note attaches to
+anything** — a Question, an Idea, a Pro, a Con or another Note. That is what
+Notes are for: a constraint, a link, a date or a piece of evidence that belongs
+somewhere in the argument without being a move in it. `n` used to produce an
+Idea when a Question was selected, which is what `i` already does, and that
+special case was the only thing standing between you and a Note on a Question.
 
 ## Changing a node's type
 

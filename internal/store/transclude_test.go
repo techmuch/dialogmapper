@@ -236,6 +236,77 @@ func TestLinkingANodeAlreadyOnTheMap(t *testing.T) {
 	}
 }
 
+// TestNoteCanBeCreatedUnderAnyParent walks the whole mutation path rather than
+// the grammar alone: CreateNode with a ParentID and no relationship, which is
+// what the canvas keystroke, the phone composer and `node add --parent` all do.
+// The grammar allowing it and the store doing it are two different claims.
+func TestNoteCanBeCreatedUnderAnyParent(t *testing.T) {
+	s := newTestStore(t)
+	m, _ := s.CreateMap("Notes everywhere", "")
+
+	// One node of every type, built the legal way so each has a real parent.
+	q, _, err := s.CreateNode(NewNodeInput{Type: ibis.Question, Title: "Root?", MapID: m.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idea, _, err := s.CreateNode(NewNodeInput{
+		Type: ibis.Idea, Title: "An idea", MapID: m.ID, ParentID: q.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pro, _, err := s.CreateNode(NewNodeInput{
+		Type: ibis.Pro, Title: "A pro", MapID: m.ID, ParentID: idea.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	con, _, err := s.CreateNode(NewNodeInput{
+		Type: ibis.Con, Title: "A con", MapID: m.ID, ParentID: idea.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	note, _, err := s.CreateNode(NewNodeInput{
+		Type: ibis.Note, Title: "A note", MapID: m.ID, ParentID: idea.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parents := map[ibis.NodeType]*Node{
+		ibis.Question: q,
+		ibis.Idea:     idea,
+		ibis.Pro:      pro,
+		ibis.Con:      con,
+		ibis.Note:     note,
+	}
+
+	for typ, parent := range parents {
+		// No Relationship given: the grammar has to infer it, exactly as it
+		// does for every real caller.
+		n, edge, err := s.CreateNode(NewNodeInput{
+			Type: ibis.Note, Title: "note on " + string(typ), MapID: m.ID, ParentID: parent.ID,
+		})
+		if err != nil {
+			t.Errorf("could not put a Note on a %s: %v", typ, err)
+			continue
+		}
+		if edge == nil {
+			t.Errorf("a Note on a %s was created unattached", typ)
+			continue
+		}
+		if edge.SourceNodeID != n.ID || edge.TargetNodeID != parent.ID {
+			t.Errorf("%s: edge runs %s -> %s, want the note -> the parent",
+				typ, edge.SourceNodeID, edge.TargetNodeID)
+		}
+		if edge.Relationship != ibis.RelatesTo {
+			t.Errorf("a Note on a %s linked with %q, want %q",
+				typ, edge.Relationship, ibis.RelatesTo)
+		}
+	}
+}
+
 func TestSearchReportsEveryMapANodeIsOn(t *testing.T) {
 	// The palette needs this to tell "already here" from "elsewhere", and to
 	// know which map to open when jumping. scanNodes never filled it, so the

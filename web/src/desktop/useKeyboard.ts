@@ -4,7 +4,7 @@ import { useGraph } from "../store/useGraph";
 import { useUI } from "../store/useUI";
 import { NODE_H, NODE_W } from "../layout/autoLayout";
 import { boundsCenter } from "./viewport";
-import type { DMNode, NodeType, Relationship } from "../types";
+import type { DMNode } from "../types";
 
 /**
  * The capture loop.
@@ -70,13 +70,16 @@ export function useKeyboard({ flow, visibleNodes }: Options) {
         case "n":
         case "N": {
           ev.preventDefault();
-          // With a Question selected the obvious next move is an answer, so
-          // `n` yields an Idea. Anywhere else it is a Note.
+          // Always a Note, on whatever is selected.
+          //
+          // This used to yield an Idea when a Question was selected, on the
+          // theory that an answer is the obvious next move. But `i` already
+          // does exactly that, so the special case bought nothing — and it cost
+          // the only keyboard route to a Note on a Question, which the grammar
+          // has always allowed. A Note attaches to anything; the key that makes
+          // one should too.
           if (selected) {
-            const type: NodeType = selected.type === "question" ? "idea" : "note";
-            const rel: Relationship =
-              selected.type === "question" ? "responds_to" : "relates_to";
-            void g.createChild(selected.id, type, rel);
+            void g.createChild(selected.id, "note", "relates_to");
           } else {
             const c = centerOfViewport(flow);
             void g.createRoot("note", c.x, c.y);

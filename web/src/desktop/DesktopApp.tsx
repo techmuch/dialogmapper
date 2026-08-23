@@ -78,7 +78,7 @@ function EmptyState() {
 }
 
 const SHORTCUTS: [string, string][] = [
-  ["n", "New note — or an Idea, when a Question is selected"],
+  ["n", "New Note on the selection — a Note attaches to any type"],
   ["q", "New Question about the selection"],
   ["i", "New Idea answering the selected Question"],
   ["+", "New Pro supporting the selected Idea"],

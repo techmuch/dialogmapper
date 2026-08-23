@@ -12,7 +12,7 @@ import { Chip } from "../components/bits";
  */
 
 const KEYS: { key: React.ReactNode; action: string }[] = [
-  { key: <kbd>n</kbd>, action: "New Note — or an Idea, when a Question is selected" },
+  { key: <kbd>n</kbd>, action: "New Note on the selection — a Note attaches to any type" },
   { key: <kbd>q</kbd>, action: "New Question about the selection" },
   { key: <kbd>i</kbd>, action: "New Idea answering the selected Question" },
   {
